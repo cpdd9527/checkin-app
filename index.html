@@ -132,6 +132,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .panel .manage-line{display:flex;gap:8px;margin-top:14px}
   .panel .manage-line input{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--txt);font-size:13.5px;outline:none}
   .panel .manage-line button{background:var(--bg2);border:1px solid var(--line);color:var(--acc2);border-radius:10px;padding:10px 14px;font-size:13px;cursor:pointer}
+  .proj-ops{display:flex;gap:6px;margin-top:8px}
+  .proj-ops button{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--acc2);border-radius:8px;padding:6px 0;font-size:12px;cursor:pointer}
+  .proj-ops button.del{color:var(--danger)}
+  .proj-card.manage-mode{background:var(--bg2)}
 
   /* 统计视图 */
   .stats{padding:14px;overflow-y:auto;flex:1}
@@ -277,7 +281,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 <!-- 项目选择面板 -->
 <div class="panel-mask hidden" id="projPanel">
   <div class="panel">
-    <h3>选择打卡项目 <span class="x" onclick="closePanel()">✕</span></h3>
+    <h3>选择打卡项目 <button class="icon-btn" id="projManageBtn" onclick="toggleProjManage()" style="padding:4px 12px">管理</button><span class="x" onclick="closePanel()">✕</span></h3>
     <div class="proj-grid" id="projGrid"></div>
     <div class="manage-line">
       <input id="newProjName" placeholder="添加新项目，如：喝水 / 背单词">
@@ -497,17 +501,57 @@ async function chatReply(text){
 }
 
 /* ================= 打卡逻辑 ================= */
+let projManage = false;
+function toggleProjManage(){
+  projManage = !projManage;
+  $("projManageBtn").textContent = projManage ? "完成" : "管理";
+  openProjectPanel();
+}
 function openProjectPanel(){
   if(!myProjects.length) return;
-  $("projGrid").innerHTML = myProjects.map(p=>`
-    <div class="proj-card" onclick="startCheckin('${p.id}')">
+  $("projGrid").innerHTML = myProjects.map(p=>{
+    if(projManage){
+      return `<div class="proj-card manage-mode">
+        <div class="em">${p.emoji||"✅"}</div>
+        <div class="nm">${p.name}</div>
+        <div class="proj-ops">
+          <button onclick="renameProject('${p.id}')">改名</button>
+          <button class="del" onclick="delProject('${p.id}')">删除</button>
+        </div>
+      </div>`;
+    }
+    return `<div class="proj-card" onclick="startCheckin('${p.id}')">
       <div class="em">${p.emoji||"✅"}</div>
       <div class="nm">${p.name}</div>
       <div class="cnt">今日已打卡 ${p.today||0} 次</div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
   $("projPanel").classList.remove("hidden");
 }
 function closePanel(){ $("projPanel").classList.add("hidden"); }
+
+async function renameProject(pid){
+  const p = myProjects.find(x=>x.id===pid);
+  if(!p) return;
+  const nn = prompt("给「"+p.name+"」改个新名字：", p.name);
+  if(!nn || !nn.trim() || nn.trim()===p.name) return;
+  const { error } = await sb.from("projects").update({ name: nn.trim() }).eq("id", pid);
+  if(error){
+    if(error.message && error.message.indexOf("duplicate")>=0) alert("已经有同名项目了，换一个");
+    else alert("改名失败，稍后再试");
+    return;
+  }
+  await loadProjects();
+  openProjectPanel();
+}
+async function delProject(pid){
+  const p = myProjects.find(x=>x.id===pid);
+  if(!p) return;
+  if(!confirm("删除「"+p.name+"」？\n它的全部打卡记录也会一起删掉，无法恢复。")) return;
+  await sb.from("projects").delete().eq("id", pid);
+  await loadProjects();
+  openProjectPanel();
+}
 
 async function addProject(){
   const name=$("newProjName").value.trim();
