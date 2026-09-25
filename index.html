@@ -179,6 +179,7 @@
     <!-- 注册 -->
     <div id="viewReg" class="hidden">
       <div class="field"><label>怎么称呼你（昵称）</label><input id="regName" placeholder="例如：老王"></div>
+      <div class="field hidden" id="regAcctWrap"><label>账号（第一位注册的管理员可自己定，不填则随机发放）</label><input id="regAcct" placeholder="2-12位字母或数字，如 XiaoWang88"></div>
       <div class="field"><label>设置密码</label><input id="regPwd" type="password" placeholder="至少 6 位"></div>
       <div class="field"><label>确认密码</label><input id="regPwd2" type="password" placeholder="再输一遍"></div>
       <div class="field"><label>密保问题（忘记密码时用）</label>
@@ -315,6 +316,16 @@ function showAuth(v){
   $("viewReg").classList.toggle("hidden", v!=="reg");
   $("viewForgot").classList.toggle("hidden", v!=="forgot");
   $("loginMsg").textContent=""; $("regMsg").textContent=""; $("fgtMsg").textContent="";
+  if(v==="reg") checkFirstUser();
+}
+/* 检测是否为第一个用户（第一位可自定义账号） */
+async function checkFirstUser(){
+  const wrap=$("regAcctWrap");
+  try{
+    const { data } = await sb.rpc("is_first_user");
+    wrap.classList.toggle("hidden", !data);
+    if(data) wrap.querySelector("input").value="";
+  }catch(e){ wrap.classList.add("hidden"); }
 }
 $("regQ").addEventListener("change", ()=>{
   $("regQCustomWrap").classList.toggle("hidden", $("regQ").value!=="自定义问题");
@@ -332,15 +343,25 @@ async function doRegister(){
   const name=$("regName").value.trim(), pwd=$("regPwd").value, pwd2=$("regPwd2").value;
   const q=$("regQ").value==="自定义问题" ? $("regQCustom").value.trim() : $("regQ").value;
   const a=$("regA").value.trim();
+  let customAcct = $("regAcct").value.trim().toUpperCase();
+  if(customAcct){
+    if(!/^[A-Z0-9]{2,12}$/.test(customAcct)){
+      $("regMsg").textContent="账号只能是 2-12 位字母或数字";
+      return;
+    }
+  }
   if(!name){ $("regMsg").textContent="昵称不能空，AI得知道怎么叫你"; return; }
   if(pwd.length<6){ $("regMsg").textContent="密码至少 6 位"; return; }
   if(pwd!==pwd2){ $("regMsg").textContent="两次密码不一致"; return; }
   if(!q||!a){ $("regMsg").textContent="密保问题和答案都要填，忘了密码要靠它"; return; }
   let ok=false;
   for(let tryN=0; tryN<5 && !ok; tryN++){
-    const account = genAccount();
+    let account = customAcct || genAccount();
     const { error: signErr } = await sb.auth.signUp({ email: account+"@local.checkin", password: pwd });
-    if(signErr) continue;
+    if(signErr){
+      if(customAcct){ $("regMsg").textContent="这个账号已经被占了，换一个试试"; return; }
+      continue;
+    }
     const salt = Math.random().toString(36).slice(2,10);
     const ah = await sha256(salt + a.toLowerCase());
     const { error: rpcErr } = await sb.rpc("register_profile", {
