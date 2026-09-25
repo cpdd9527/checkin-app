@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>打卡搭子 · 你的锻炼学习小管家</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#14181F; --bg2:#1B212B; --card:#1E2631; --card2:#242E3B;
+    --line:#2C3745; --txt:#F2F5F8; --sub:#9AA7B4; --dim:#6B7886;
+    --acc:#FF7A29; --acc2:#FF9A5C; --ok:#2DD4A7; --warn:#FFC53D; --danger:#FF6B6B;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+    line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .hidden{display:none!important}
+
+  /* ===== 通用卡片 ===== */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+
+  /* ===== 认证视图 ===== */
+  .auth-wrap{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:20px;background:radial-gradient(1200px 600px at 50% -10%,#1E2A3A 0%,var(--bg) 60%);
+  }
+  .auth-card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+  .auth-logo{text-align:center;margin-bottom:18px}
+  .auth-logo .icon{font-size:40px;line-height:1}
+  .auth-logo h1{font-size:22px;font-weight:800;margin-top:6px}
+  .auth-logo p{color:var(--sub);font-size:13px;margin-top:4px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12.5px;color:var(--sub);margin-bottom:5px;font-weight:600}
+  .field input,.field select{
+    width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    padding:11px 12px;color:var(--txt);font-size:14.5px;outline:none;
+  }
+  .field input:focus,.field select:focus{border-color:var(--acc)}
+  .btn{
+    width:100%;background:var(--acc);color:#1A120B;border:0;border-radius:10px;
+    padding:12px;font-size:15px;font-weight:800;cursor:pointer;margin-top:6px;
+  }
+  .btn:active{transform:scale(.98)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--sub);font-weight:600}
+  .auth-switch{display:flex;gap:10px;margin-top:14px}
+  .auth-switch button{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--sub);border-radius:10px;padding:10px;font-size:13px;cursor:pointer}
+  .auth-switch button:active{transform:scale(.98)}
+  .auth-msg{font-size:12.5px;color:var(--danger);min-height:18px;margin-top:8px;text-align:center}
+  .auth-msg.ok{color:var(--ok)}
+  .acct-box{background:var(--bg2);border:1px dashed var(--acc);border-radius:10px;padding:14px;text-align:center;margin:10px 0}
+  .acct-box .big{font-size:26px;font-weight:900;color:var(--acc2);letter-spacing:.08em}
+  .acct-box .tip{font-size:12px;color:var(--sub);margin-top:6px}
+
+  /* ===== 主应用 ===== */
+  .app{max-width:760px;margin:0 auto;height:100vh;display:flex;flex-direction:column}
+  .app-top{
+    padding:14px 16px;display:flex;align-items:center;gap:10px;
+    border-bottom:1px solid var(--line);background:var(--bg2);
+  }
+  .app-top .logo{font-weight:800;font-size:15px}
+  .app-top .logo em{color:var(--acc);font-style:normal}
+  .app-top .spacer{flex:1}
+  .chip{font-size:12px;color:var(--sub);background:var(--card);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
+  .icon-btn{background:var(--card);border:1px solid var(--line);color:var(--sub);border-radius:10px;padding:7px 12px;font-size:13px;cursor:pointer}
+  .icon-btn:active{transform:scale(.96)}
+
+  /* 聊天区 */
+  .chat{flex:1;overflow-y:auto;padding:14px 14px 6px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:14.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+  .msg.ai{background:var(--card);border:1px solid var(--line);border-top-left-radius:4px;align-self:flex-start}
+  .msg.me{background:var(--acc);color:#1A120B;font-weight:600;border-top-right-radius:4px;align-self:flex-end}
+  .msg .who{font-size:11px;color:var(--dim);display:block;margin-bottom:3px;font-weight:600}
+  .msg.me .who{color:rgba(26,18,11,.65)}
+
+  /* 总结卡片 */
+  .sum-card{background:var(--card2);border:1px solid var(--ok);border-radius:12px;padding:12px 14px;margin-top:8px;font-size:13.5px}
+  .sum-card .sum-title{font-weight:800;color:var(--ok);margin-bottom:6px;font-size:14px}
+  .sum-card .row{display:flex;justify-content:space-between;padding:3px 0;color:var(--sub)}
+  .sum-card .row b{color:var(--txt)}
+
+  /* 快捷输入区 */
+  .quick-inputs{display:flex;gap:8px;padding:0 14px 8px;flex-wrap:wrap}
+  .qchip{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:6px 14px;font-size:13.5px;color:var(--acc2);cursor:pointer}
+  .qchip:active{transform:scale(.96)}
+
+  /* 输入栏 */
+  .input-bar{display:flex;gap:8px;padding:10px 14px 16px;border-top:1px solid var(--line);background:var(--bg2)}
+  .input-bar input{
+    flex:1;background:var(--card);border:1px solid var(--line);border-radius:22px;
+    padding:11px 16px;color:var(--txt);font-size:14.5px;outline:none;
+  }
+  .input-bar input:focus{border-color:var(--acc)}
+  .input-bar .send{width:44px;height:44px;border-radius:50%;border:0;background:var(--acc);color:#1A120B;font-size:18px;cursor:pointer;font-weight:800}
+  .input-bar .send:active{transform:scale(.95)}
+
+  /* 打卡按钮 */
+  .checkin-bar{padding:0 14px 12px;border-top:1px solid var(--line);background:var(--bg2)}
+  .checkin-btn{
+    width:100%;background:linear-gradient(135deg,var(--acc) 0%,#FFB26B 100%);border:0;border-radius:14px;
+    padding:15px;font-size:16px;font-weight:900;color:#1A120B;cursor:pointer;letter-spacing:.05em;
+    box-shadow:0 6px 24px rgba(255,122,41,.28);
+  }
+  .checkin-btn:active{transform:scale(.99)}
+  .checkin-btn small{display:block;font-weight:600;font-size:12px;opacity:.75;margin-top:2px}
+
+  /* 项目选择面板 */
+  .panel-mask{position:fixed;inset:0;background:rgba(10,12,16,.7);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+  .panel{width:100%;max-width:760px;background:var(--bg2);border:1px solid var(--line);border-radius:20px 20px 0 0;padding:18px 18px 26px}
+  .panel h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .panel h3 .x{margin-left:auto;cursor:pointer;color:var(--dim);font-size:20px;padding:2px 8px}
+  .proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;max-height:40vh;overflow-y:auto}
+  .proj-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;text-align:center}
+  .proj-card:active{transform:scale(.97);border-color:var(--acc)}
+  .proj-card .em{font-size:24px}
+  .proj-card .nm{font-size:13.5px;font-weight:700;margin-top:4px}
+  .proj-card .cnt{font-size:11.5px;color:var(--dim);margin-top:2px}
+  .panel .manage-line{display:flex;gap:8px;margin-top:14px}
+  .panel .manage-line input{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--txt);font-size:13.5px;outline:none}
+  .panel .manage-line button{background:var(--bg2);border:1px solid var(--line);color:var(--acc2);border-radius:10px;padding:10px 14px;font-size:13px;cursor:pointer}
+
+  /* 统计视图 */
+  .stats{padding:14px;overflow-y:auto;flex:1}
+  .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+  .stat-cell{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+  .stat-cell .v{font-size:26px;font-weight:900;color:var(--acc2)}
+  .stat-cell .k{font-size:12px;color:var(--sub);margin-top:2px}
+  .chart-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  .chart-box h4{font-size:13.5px;margin-bottom:6px;color:var(--sub);font-weight:700}
+  #chartTrend{height:200px}
+  #chartPie{height:190px}
+  .proj-list-stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .proj-list-stat .row{display:flex;justify-content:space-between;padding:5px 0;font-size:13.5px;border-bottom:1px dashed var(--line)}
+  .proj-list-stat .row:last-child{border:0}
+  .proj-list-stat b{color:var(--acc2)}
+
+  /* 管理面板占位 */
+  .admin-panel{padding:14px;overflow-y:auto;flex:1}
+  .admin-panel .tip{color:var(--sub);font-size:13.5px;text-align:center;padding:40px 10px;border:1px dashed var(--line);border-radius:12px}
+
+  .nav-tabs{display:flex;border-top:1px solid var(--line);background:var(--bg2)}
+  .nav-tabs button{flex:1;padding:11px;background:transparent;border:0;color:var(--dim);font-size:13.5px;font-weight:700;cursor:pointer}
+  .nav-tabs button.on{color:var(--acc2);box-shadow:inset 0 -2px 0 var(--acc)}
+
+  @media (max-width:480px){
+    .msg{max-width:88%}
+    .stat-grid{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 认证视图 ===== -->
+<div class="auth-wrap" id="authView">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="icon">💪</div>
+      <h1>打卡搭子</h1>
+      <p>锻炼 · 学习 · 每天都有AI陪着你</p>
+    </div>
+
+    <!-- 登录 -->
+    <div id="viewLogin">
+      <div class="field"><label>账号</label><input id="loginAcct" placeholder="例如 CK-3K7D" autocomplete="username"></div>
+      <div class="field"><label>密码</label><input id="loginPwd" type="password" placeholder="输入密码" autocomplete="current-password"></div>
+      <button class="btn" onclick="doLogin()">登 录</button>
+      <div class="auth-switch">
+        <button onclick="showAuth('reg')">没有账号？注册</button>
+        <button onclick="showAuth('forgot')">忘记密码</button>
+      </div>
+      <div class="auth-msg" id="loginMsg"></div>
+    </div>
+
+    <!-- 注册 -->
+    <div id="viewReg" class="hidden">
+      <div class="field"><label>怎么称呼你（昵称）</label><input id="regName" placeholder="例如：老王"></div>
+      <div class="field"><label>设置密码</label><input id="regPwd" type="password" placeholder="至少 6 位"></div>
+      <div class="field"><label>确认密码</label><input id="regPwd2" type="password" placeholder="再输一遍"></div>
+      <div class="field"><label>密保问题（忘记密码时用）</label>
+        <select id="regQ">
+          <option>你养的第一只宠物叫什么？</option>
+          <option>你母亲的出生城市是？</option>
+          <option>你最喜欢的运动是什么？</option>
+          <option>你的小学名称是？</option>
+          <option>自定义问题</option>
+        </select>
+      </div>
+      <div class="field hidden" id="regQCustomWrap"><label>自定义问题</label><input id="regQCustom" placeholder="输入你的问题"></div>
+      <div class="field"><label>密保答案</label><input id="regA" placeholder="答案（请牢记）"></div>
+      <button class="btn" onclick="doRegister()">注 册</button>
+      <div class="auth-switch"><button onclick="showAuth('login')">← 返回登录</button></div>
+      <div class="auth-msg" id="regMsg"></div>
+    </div>
+
+    <!-- 找回密码 -->
+    <div id="viewForgot" class="hidden">
+      <div class="field"><label>账号</label><input id="fgtAcct" placeholder="例如 CK-3K7D"></div>
+      <div class="field"><label>密保答案</label><input id="fgtA" placeholder="回答密保问题"></div>
+      <div class="field"><label>新密码</label><input id="fgtPwd" type="password" placeholder="设置新密码，至少 6 位"></div>
+      <button class="btn" onclick="doResetPwd()">重置密码</button>
+      <div class="auth-switch"><button onclick="showAuth('login')">← 返回登录</button></div>
+      <div class="auth-msg" id="fgtMsg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 主应用 ===== -->
+<div class="app hidden" id="appView">
+  <div class="app-top">
+    <div class="logo">打卡搭子<em> · </em><span id="topName"></span></div>
+    <div class="spacer"></div>
+    <span class="chip" id="topDate"></span>
+    <button class="icon-btn hidden" id="adminBtn" onclick="showAdmin()">管理</button>
+    <button class="icon-btn" onclick="doLogout()">退出</button>
+  </div>
+
+  <!-- 打卡视图 -->
+  <div id="mainView" style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <div class="chat" id="chatBox"></div>
+    <div class="quick-inputs" id="quickInputs"></div>
+    <div class="checkin-bar">
+      <button class="checkin-btn" onclick="openProjectPanel()">打卡 <small>点这里，选一个项目打卡</small></button>
+    </div>
+    <div class="input-bar">
+      <input id="chatInput" placeholder="和你的搭子聊两句…" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="send" onclick="sendChat()">➤</button>
+    </div>
+  </div>
+
+  <!-- 统计视图 -->
+  <div id="statsView" class="stats hidden"></div>
+
+  <!-- 管理视图 -->
+  <div id="adminView" class="admin-panel hidden">
+    <div class="tip">🔧 管理功能建设中<br><br>以后这里可以放：全员打卡汇总、账号管理、数据导出等能力</div>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="on" data-v="main" onclick="switchView('main')">打卡</button>
+    <button data-v="stats" onclick="switchView('stats')">统计</button>
+  </div>
+</div>
+
+<!-- 项目选择面板 -->
+<div class="panel-mask hidden" id="projPanel">
+  <div class="panel">
+    <h3>选择打卡项目 <span class="x" onclick="closePanel()">✕</span></h3>
+    <div class="proj-grid" id="projGrid"></div>
+    <div class="manage-line">
+      <input id="newProjName" placeholder="添加新项目，如：喝水 / 背单词">
+      <button onclick="addProject()">＋添加</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= 配置区（发布前填入） ================= */
+const SUPABASE_URL = "PASTE_YOUR_SUPABASE_URL";
+const SUPABASE_ANON_KEY = "PASTE_YOUR_SUPABASE_ANON_KEY";
+/* ======================================================== */
+
+const sb = SUPABASE_URL.startsWith("http") ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+/* ================= 工具函数 ================= */
+const $ = id => document.getElementById(id);
+function todayStr(d){ d=d||new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function fmtCN(dstr){ const [y,m,d]=dstr.split("-").map(Number); return `${y}年${m}月${d}日`; }
+async function sha256(text){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function genAccount(){
+  const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s=""; for(let i=0;i<4;i++) s+=chars[Math.floor(Math.random()*chars.length)];
+  return "CK-"+s;
+}
+const WEEK_CN=["日","一","二","三","四","五","六"];
+const WEEK_KEYS=[null,"push","run",null,"pull","legs",null,null];
+const PLAN_NAME={push:"推日",run:"间歇跑",pull:"拉日",legs:"腿日"};
+function todayPlan(){ const k=WEEK_KEYS[new Date().getDay()]; return k?{key:k,name:PLAN_NAME[k]}:null; }
+
+/* ================= 当前会话状态 ================= */
+let me = null;        // 当前用户 profile
+let myProjects = [];  // 我的打卡项目（含今日次数）
+let convState = null; // 对话状态机
+const FIXED_PLAN=[ // 固定课表：0=周日 … 6=周六
+  {key:null,name:"休息日"},
+  {key:"push",name:"推日"},
+  {key:"run",name:"间歇跑"},
+  {key:null,name:"休息日"},
+  {key:"pull",name:"拉日"},
+  {key:"legs",name:"腿日"},
+  {key:null,name:"休息日"},
+];
+
+/* ================= 认证 ================= */
+function showAuth(v){
+  $("viewLogin").classList.toggle("hidden", v!=="login");
+  $("viewReg").classList.toggle("hidden", v!=="reg");
+  $("viewForgot").classList.toggle("hidden", v!=="forgot");
+  $("loginMsg").textContent=""; $("regMsg").textContent=""; $("fgtMsg").textContent="";
+}
+$("regQ").addEventListener("change", ()=>{
+  $("regQCustomWrap").classList.toggle("hidden", $("regQ").value!=="自定义问题");
+});
+
+async function doLogin(){
+  const acct=$("loginAcct").value.trim().toUpperCase(), pwd=$("loginPwd").value;
+  if(!acct||!pwd){ $("loginMsg").textContent="账号和密码都要填哦"; return; }
+  const { error } = await sb.auth.signInWithPassword({ email: acct+"@local.checkin", password: pwd });
+  if(error){ $("loginMsg").textContent = "账号或密码不对，再试试"; return; }
+  await loadApp();
+}
+
+async function doRegister(){
+  const name=$("regName").value.trim(), pwd=$("regPwd").value, pwd2=$("regPwd2").value;
+  const q=$("regQ").value==="自定义问题" ? $("regQCustom").value.trim() : $("regQ").value;
+  const a=$("regA").value.trim();
+  if(!name){ $("regMsg").textContent="昵称不能空，AI得知道怎么叫你"; return; }
+  if(pwd.length<6){ $("regMsg").textContent="密码至少 6 位"; return; }
+  if(pwd!==pwd2){ $("regMsg").textContent="两次密码不一致"; return; }
+  if(!q||!a){ $("regMsg").textContent="密保问题和答案都要填，忘了密码要靠它"; return; }
+  let ok=false;
+  for(let tryN=0; tryN<5 && !ok; tryN++){
+    const account = genAccount();
+    const { error: signErr } = await sb.auth.signUp({ email: account+"@local.checkin", password: pwd });
+    if(signErr) continue;
+    const salt = Math.random().toString(36).slice(2,10);
+    const ah = await sha256(salt + a.toLowerCase());
+    const { error: rpcErr } = await sb.rpc("register_profile", {
+      p_account: account, p_nickname: name, p_q: q, p_a_hash: ah, p_salt: salt
+    });
+    if(rpcErr){ await sb.auth.signOut(); continue; }
+    ok=true;
+    $("regMsg").classList.add("ok");
+    $("regMsg").innerHTML = "";
+    // 展示随机账号
+    const box = document.createElement("div");
+    box.className="acct-box";
+    box.innerHTML = `<div style="font-size:12.5px;color:var(--sub)">🎉 注册成功！你的账号是</div><div class="big">${account}</div><div class="tip">请截图或抄下来，登录要用。<br>密码是你自己设置的，密保答案请牢记。</div>`;
+    const oldBtn = $("viewReg").querySelector(".btn");
+    $("viewReg").insertBefore(box, oldBtn);
+    $("regMsg").textContent = "";
+    await loadApp();
+    return;
+  }
+  $("regMsg").textContent="注册遇到问题，稍后再试一次";
+}
+
+async function doResetPwd(){
+  const acct=$("fgtAcct").value.trim().toUpperCase(), ans=$("fgtA").value.trim(), np=$("fgtPwd").value;
+  if(!acct||!ans||np.length<6){ $("fgtMsg").textContent="请完整填写，密码至少 6 位"; return; }
+  try{
+    const r = await fetch(SUPABASE_URL+"/functions/v1/reset-password", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ account: acct, answer: ans, newPassword: np })
+    });
+    const d = await r.json();
+    if(d.ok){ $("fgtMsg").classList.add("ok"); $("fgtMsg").textContent="✅ 密码已重置，用新密码登录吧"; }
+    else { $("fgtMsg").textContent = d.msg || "重置失败"; }
+  }catch(e){ $("fgtMsg").textContent="网络异常，稍后再试"; }
+}
+
+function doLogout(){ sb.auth.signOut(); location.reload(); }
+
+/* ================= 会话/数据加载 ================= */
+async function loadApp(){
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user) return;
+  const { data: prof } = await sb.from("profiles").select("*").eq("id", user.id).single();
+  if(!prof){ await sb.auth.signOut(); location.reload(); return; }
+  me = prof;
+  $("authView").classList.add("hidden");
+  $("appView").classList.remove("hidden");
+  $("topName").textContent = me.nickname;
+  $("topDate").textContent = fmtCN(todayStr());
+  if(me.role==="admin") $("adminBtn").classList.remove("hidden");
+  await loadProjects();
+  await bootChat();
+}
+
+async function loadProjects(){
+  const { data } = await sb.from("projects").select("*").order("sort");
+  myProjects = data||[];
+  if(!myProjects.some(p=>p.name==="锻炼") || !myProjects.some(p=>p.name==="学习")){
+    const defs = [
+      { name:"锻炼", emoji:"💪", sort:1 },
+      { name:"学习", emoji:"📚", sort:2 },
+    ];
+    for(const d of defs){
+      if(!myProjects.some(p=>p.name===d.name)){
+        await sb.from("projects").insert({ user_id: me.id, ...d });
+      }
+    }
+    const { data: d2 } = await sb.from("projects").select("*").order("sort");
+    myProjects = d2||[];
+  }
+  // 今日次数
+  const t = todayStr();
+  for(const p of myProjects){
+    const { count } = await sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", p.id).eq("date", t);
+    p.today = count||0;
+  }
+}
+
+/* ================= 聊天渲染 ================= */
+function addMsg(text, who){
+  const box=$("chatBox");
+  const div=document.createElement("div");
+  div.className="msg "+(who==="me"?"me":"ai");
+  div.innerHTML = who==="me" ? text : `<span class="who">打卡搭子</span>${text}`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+function addCard(html){
+  const box=$("chatBox");
+  const div=document.createElement("div");
+  div.className="msg ai";
+  div.innerHTML = `<span class="who">打卡搭子</span>${html}`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+function renderQuick(chips){
+  const box=$("quickInputs");
+  box.innerHTML = "";
+  for(const c of chips){
+    const b=document.createElement("span");
+    b.className="qchip"; b.textContent=c;
+    b.onclick = ()=>{ chatReply(c); };
+    box.appendChild(b);
+  }
+}
+function clearQuick(){ $("quickInputs").innerHTML=""; }
+
+async function chatReply(text){
+  if(!convState) return;
+  addMsg(text, "me");
+  clearQuick();
+  await convState.next(text);
+}
+
+/* ================= 打卡逻辑 ================= */
+function openProjectPanel(){
+  if(!myProjects.length) return;
+  $("projGrid").innerHTML = myProjects.map(p=>`
+    <div class="proj-card" onclick="startCheckin('${p.id}')">
+      <div class="em">${p.emoji||"✅"}</div>
+      <div class="nm">${p.name}</div>
+      <div class="cnt">今日已打卡 ${p.today||0} 次</div>
+    </div>`).join("");
+  $("projPanel").classList.remove("hidden");
+}
+function closePanel(){ $("projPanel").classList.add("hidden"); }
+
+async function addProject(){
+  const name=$("newProjName").value.trim();
+  if(!name){ return; }
+  const emojis=["✅","💪","📚","🏃","🧘","💧","🎯","✍️","🌙","🛌"];
+  const { error } = await sb.from("projects").insert({ user_id: me.id, name, emoji: emojis[myProjects.length%emojis.length], sort: myProjects.length+1 });
+  if(!error){
+    $("newProjName").value="";
+    await loadProjects();
+    openProjectPanel();
+  }
+}
+
+function startCheckin(pid){
+  closePanel();
+  const p = myProjects.find(x=>x.id===pid);
+  if(!p) return;
+  if(p.name==="锻炼"){
+    convState = {
+      project:p, step:"type", data:{},
+      next: async function(text){
+        if(this.step==="type"){
+          this.data.type = text;
+          await doCheckinRecord(this.project, { type:text });
+          const plan = todayPlan();
+          let praise;
+          if(plan && text===plan.name) praise = `今天本来就是${plan.name}，按计划打卡，稳！👊`;
+          else if(plan) praise = `今天是${plan.name}，你练了${text}——这是主动加练还是计划后移？都行，练了就算数！🔥`;
+          else praise = `不是计划日还练了${text}，你这自律有点吓人🤯`;
+          const streak = await calcStreak(this.project.id);
+          addCard(`
+            <div class="sum-card">
+              <div class="sum-title">✅ ${this.project.name}打卡成功 · ${text}</div>
+              <div class="row"><span>连续打卡</span><b>${streak} 天</b></div>
+              <div class="row"><span>今日项目次数</span><b>${(this.project.today||0)+1} 次</b></div>
+              <div class="row"><span>状态</span><b>${praise}</b></div>
+            </div>`);
+          convState=null;
+          renderDailyTips();
+        }
+      }
+    };
+    addMsg(`今天练的是哪个？<br>（${["推日","拉日","腿日","间歇跑","其他"].join(" / ")}）`,"ai");
+    renderQuick(["推日","拉日","腿日","间歇跑","其他"]);
+  }
+  else if(p.name==="学习"){
+    convState = {
+      project:p, step:"subject", data:{},
+      next: async function(text){
+        if(this.step==="subject"){
+          this.data.subject = text;
+          this.step="duration";
+          addMsg("学了多久？⏰","ai");
+          renderQuick(["30分钟","1小时","1.5小时","2小时","自定义"]);
+        } else if(this.step==="duration"){
+          let dur = text;
+          if(text==="自定义"){ this.step="durationCustom"; addMsg("输入学习时长，比如 45分钟","ai"); return; }
+          await doCheckinRecord(this.project, { subject:this.data.subject, duration:dur });
+          const streak = await calcStreak(this.project.id);
+          const total = await calcTotal(this.project.id);
+          addCard(`
+            <div class="sum-card">
+              <div class="sum-title">📚 今日学习打卡 · 总结</div>
+              <div class="row"><span>科目</span><b>${this.data.subject}</b></div>
+              <div class="row"><span>时长</span><b>${dur}</b></div>
+              <div class="row"><span>连续学习</span><b>${streak} 天</b></div>
+              <div class="row"><span>累计学习</span><b>${total} 次</b></div>
+            </div>`);
+          const words = ["又是充实的一天，知识在悄悄涨📈","连${dur}都能坚持，稳得一批👍","今天这波学习，值得给自己加个鸡腿🍗"];
+          addMsg(words[Math.floor(Math.random()*words.length)].replace("${dur}",dur), "ai");
+          convState=null;
+          renderDailyTips();
+        } else if(this.step==="durationCustom"){
+          await doCheckinRecord(this.project, { subject:this.data.subject, duration:text });
+          const streak = await calcStreak(this.project.id);
+          const total = await calcTotal(this.project.id);
+          addCard(`
+            <div class="sum-card">
+              <div class="sum-title">📚 今日学习打卡 · 总结</div>
+              <div class="row"><span>科目</span><b>${this.data.subject}</b></div>
+              <div class="row"><span>时长</span><b>${text}</b></div>
+              <div class="row"><span>连续学习</span><b>${streak} 天</b></div>
+              <div class="row"><span>累计学习</span><b>${total} 次</b></div>
+            </div>`);
+          addMsg("记下了，今天这波学习很扎实📈","ai");
+          convState=null;
+          renderDailyTips();
+        }
+      }
+    };
+    addMsg("今天学了什么科目？✍️","ai");
+    renderQuick(["数学","英语","专业课","背单词","阅读","自定义"]);
+  }
+  else{
+    // 其他项目：直接打卡
+    (async ()=>{
+      await doCheckinRecord(p, {});
+      const streak = await calcStreak(p.id);
+      addCard(`
+        <div class="sum-card">
+          <div class="sum-title">✅ ${p.name}打卡成功</div>
+          <div class="row"><span>连续打卡</span><b>${streak} 天</b></div>
+          <div class="row"><span>今日次数</span><b>${(p.today||0)+1} 次</b></div>
+        </div>`);
+      const msgs=["坚持得漂亮💪","又完成一次，稳！👏","好样的，继续保持！✨"];
+      addMsg(msgs[Math.floor(Math.random()*msgs.length)], "ai");
+      renderDailyTips();
+    })();
+  }
+}
+
+async function doCheckinRecord(project, meta){
+  await sb.from("checkins").insert({
+    user_id: me.id, project_id: project.id, date: todayStr(), note:"", meta
+  });
+  project.today = (project.today||0)+1;
+}
+
+async function calcStreak(pid){
+  const { data } = await sb.from("checkins").select("date").eq("project_id", pid).order("date", { ascending:false }).limit(60);
+  if(!data||!data.length) return 0;
+  const dates = new Set(data.map(d=>d.date));
+  let n=0; const d=new Date();
+  while(dates.has(todayStr(d))){ n++; d.setDate(d.getDate()-1); }
+  return n;
+}
+async function calcTotal(pid){
+  const { count } = await sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", pid);
+  return count||0;
+}
+
+/* ================= 自由聊天 ================= */
+function sendChat(){
+  const inp=$("chatInput");
+  const t=inp.value.trim();
+  if(!t) return;
+  inp.value="";
+  if(convState){ chatReply(t); return; }
+  addMsg(t,"me");
+  freeChatReply(t);
+}
+function freeChatReply(t){
+  const w=me.nickname;
+  const replies=[
+    ["加油","坚持","努力","自律","想放弃","不想练","好累","累"], `顶住啊${w}！肌肉和知识都在悄悄记住你今天的坚持💪`,
+    ["无聊","没劲","烦","emo","不开心","难受"], `来，${w}，深呼吸。你已经做得很好了，今天哪怕只打卡一次也算赢🌱`,
+    ["你好","hi","嗨","hello","在吗"], `在呢${w}！今天打卡了吗？没打卡我可要盯上你了😏`,
+    ["打卡","怎么打卡"], `点下面橙色大按钮「打卡」，选个项目就行～`,
+    ["学习","学什么"], `你今天想学啥都行，先学起来，量变到质变📚`,
+    ["锻炼","练什么","健身"], `按课表：${FIXED_PLAN[new Date().getDay()].name}。特殊情况可以后移，但别欠太久👊`,
+    ["你是谁","你叫什么"], `我是你的打卡搭子，负责夸你、盯你、偶尔损你两句😎`,
+  ];
+  for(const [keys, rep] of replies){
+    if(keys.some(k=>t.includes(k))){ addMsg(rep,"ai"); return; }
+  }
+  const generic=[
+    `嗯嗯，${w}，继续说，我在听👂`,
+    `这话有点意思，展开说说？🤔`,
+    `不管聊啥，别忘了今天的打卡任务哦😉`,
+  ];
+  addMsg(generic[Math.floor(Math.random()*generic.length)], "ai");
+}
+
+/* ================= 启动对话（问候+算账+课表） ================= */
+async function bootChat(){
+  const box=$("chatBox");
+  box.innerHTML="";
+  const w=me.nickname;
+  const dow=new Date().getDay();
+  const plan=FIXED_PLAN[dow];
+  const t=todayStr();
+  const y=new Date(); y.setDate(y.getDate()-1);
+  const ystr=todayStr(y);
+  const todayCount = myProjects.reduce((s,p)=>s+(p.today||0),0);
+  let msg = "";
+
+  // 昨天的账
+  const { data: yc } = await sb.from("checkins").select("project_id, meta").eq("user_id", me.id).eq("date", ystr);
+  const yList = yc||[];
+  const workOutToday = yList.some(c=>c.project_id && myProjects.find(p=>p.id===c.project_id)?.name==="锻炼");
+  const studyToday = yList.some(c=>c.project_id && myProjects.find(p=>p.id===c.project_id)?.name==="学习");
+  const yMiss=[];
+  if(!workOutToday) yMiss.push("锻炼");
+  if(!studyToday) yMiss.push("学习");
+
+  const greets=["早","晚上好","嗨","来了啊","哟"];
+  msg = `${greets[Math.floor(Math.random()*greets.length)]}，${w}${todayCount>0?`，今天已经打卡 ${todayCount} 次，可以啊🔥`:"！"}\n`;
+  if(yMiss.length){
+    msg += `先算个账：昨天「${yMiss.join("、")}」你可是空着的😏\n今天补上，别让我再念叨了。\n`;
+  } else {
+    msg += `昨天锻炼、学习都齐了，继续保持这个节奏👏\n`;
+  }
+  if(plan.key){
+    msg += `今天${plan.name}。课表上写着呢，别偷懒💪`;
+  } else {
+    msg += `今天休息日，好好恢复，明天再战🌙`;
+  }
+  const debts = await computeDebts();
+  if(debts.length){
+    msg += `\n\n对了，这周还欠着：${debts.map(d=>`周${WEEK_CN[d.dow]}的${d.name}`).join("、")}。可以后移补上，但别赖账😏`;
+  }
+  addMsg(msg,"ai");
+  renderDailyTips();
+}
+
+async function renderDailyTips(){
+  const plan = todayPlan();
+  const tips=[];
+  if(plan) tips.push(`今天课表：${plan.name}`);
+  const debts = await computeDebts();
+  if(debts.length) tips.push(`还欠着：${debts.map(d=>`周${WEEK_CN[d.dow]}的${d.name}`).join("、")}`);
+  const box=$("quickInputs");
+  box.innerHTML = tips.map(t=>`<span class="qchip">${t}</span>`).join("");
+}
+
+/* 欠账计算：固定课表里过去的日子，该类型一直没打卡（含后移补课）就算欠 */
+async function computeDebts(){
+  const proj = myProjects.find(p=>p.name==="锻炼");
+  if(!proj) return [];
+  const { data: rows } = await sb.from("checkins").select("date, meta").eq("project_id", proj.id);
+  const list = rows||[];
+  const debts=[];
+  const now=new Date();
+  const dow=(now.getDay()+6)%7; // 周一=0
+  for(let i=0;i<dow;i++){ // 本周一 至 昨天
+    const dd=new Date(); dd.setDate(now.getDate()-(dow-i));
+    const key=WEEK_KEYS[dd.getDay()];
+    if(!key) continue;
+    const name=PLAN_NAME[key];
+    const ds=todayStr(dd);
+    // 从该课表日到今天，是否有对应类型打卡（后移补课也算销账）
+    const paid = list.some(r=> r.meta && r.meta.type===name && r.date>=ds);
+    if(!paid) debts.push({ dow:dd.getDay(), name, ds });
+  }
+  return debts;
+}
+
+/* ================= 统计 ================= */
+async function switchView(v){
+  document.querySelectorAll(".nav-tabs button").forEach(b=>b.classList.toggle("on", b.dataset.v===v));
+  $("mainView").classList.toggle("hidden", v!=="main");
+  $("statsView").classList.toggle("hidden", v!=="stats");
+  $("adminView").classList.toggle("hidden", v!=="admin");
+  if(v==="stats") await loadStats();
+}
+function showAdmin(){ switchView("admin"); }
+
+async function loadStats(){
+  const { data: rows } = await sb.from("checkins").select("date, project_id, meta, created_at").eq("user_id", me.id).order("date", { ascending:true });
+  const list = rows||[];
+  const box=$("statsView");
+  const today = todayStr();
+  // 连续天数（全项目）
+  const allDates = new Set(list.map(r=>r.date));
+  let streak=0; const d=new Date();
+  while(allDates.has(todayStr(d))){ streak++; d.setDate(d.getDate()-1); }
+  // 本周打卡
+  const now=new Date(); const dow=(now.getDay()+6)%7; // 周一=0
+  const monday=new Date(now); monday.setDate(now.getDate()-dow);
+  let weekCount=0;
+  for(const r of list){ const dd=new Date(r.date); if(dd>=monday) weekCount++; }
+  const weekTotal = 7;
+  // 近14天
+  const days=[]; const labels=[]; const counts=[];
+  for(let i=13;i>=0;i--){
+    const dd=new Date(); dd.setDate(dd.getDate()-i);
+    const s=todayStr(dd);
+    labels.push((dd.getMonth()+1)+"/"+dd.getDate());
+    counts.push(list.filter(r=>r.date===s).length);
+    days.push(s);
+  }
+  // 各项目
+  const projStat = myProjects.map(p=>{
+    const rows2 = list.filter(r=>r.project_id===p.id);
+    let pStreak=0; const dd=new Date();
+    const ds=new Set(rows2.map(r=>r.date));
+    while(ds.has(todayStr(dd))){ pStreak++; dd.setDate(dd.getDate()-1); }
+    return { p, total: rows2.length, streak: pStreak };
+  });
+
+  box.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-cell"><div class="v">${streak}</div><div class="k">连续打卡（天）</div></div>
+      <div class="stat-cell"><div class="v">${weekCount}</div><div class="k">本周打卡（次）</div></div>
+      <div class="stat-cell"><div class="v">${list.length}</div><div class="k">累计打卡（次）</div></div>
+      <div class="stat-cell"><div class="v">${Math.round(weekCount/weekTotal*100)}%</div><div class="k">本周完成率</div></div>
+    </div>
+    <div class="chart-box"><h4>近 14 天打卡趋势</h4><div id="chartTrend"></div></div>
+    <div class="chart-box"><h4>项目占比</h4><div id="chartPie"></div></div>
+    <div class="proj-list-stat">
+      ${projStat.map(s=>`<div class="row"><span>${s.p.emoji||"✅"} ${s.p.name}</span><span>连续 <b>${s.streak}</b> 天 · 共 <b>${s.total}</b> 次</span></div>`).join("")}
+    </div>`;
+
+  // ECharts 趋势
+  const trend = echarts.init($("chartTrend"));
+  trend.setOption({
+    backgroundColor:"transparent",
+    grid:{ left:30, right:10, top:20, bottom:24 },
+    xAxis:{ type:"category", data:labels, axisLine:{lineStyle:{color:"#2C3745"}}, axisLabel:{color:"#9AA7B4", fontSize:10} },
+    yAxis:{ type:"value", minInterval:1, splitLine:{lineStyle:{color:"#232C3A"}}, axisLabel:{color:"#9AA7B4", fontSize:10} },
+    series:[{ type:"bar", data:counts, itemStyle:{ color:"#FF7A29", borderRadius:[4,4,0,0] }, barWidth:"55%" }]
+  });
+  // 饼图
+  const pie = echarts.init($("chartPie"));
+  pie.setOption({
+    backgroundColor:"transparent",
+    tooltip:{ trigger:"item" },
+    legend:{ bottom:0, textStyle:{color:"#9AA7B4", fontSize:11} },
+    series:[{
+      type:"pie", radius:["42%","68%"], center:["50%","44%"],
+      label:{ color:"#F2F5F8", fontSize:11 },
+      data: projStat.filter(s=>s.total>0).map(s=>({ name:s.p.name, value:s.total })),
+      itemStyle:{ borderRadius:6, borderColor:"#1E2631", borderWidth:2 },
+      color:["#FF7A29","#2DD4A7","#FFC53D","#7AA2FF","#FF6B9D","#5CC8FF","#B48CFF","#7FE0A6"]
+    }]
+  });
+}
+/* ================= 启动 ================= */
+window.addEventListener("DOMContentLoaded", async ()=>{
+  if(!sb){
+    document.querySelector(".auth-logo p").textContent = "⚠️ 还没配置数据库，请联系管理员完成部署";
+    return;
+  }
+  $("loginPwd").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+  $("loginAcct").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+  $("chatInput").focus();
+  const { data: { session } } = await sb.auth.getSession();
+  if(session) await loadApp();
+});
+</script>
+</body>
+</html>
