@@ -166,7 +166,7 @@
 
     <!-- 登录 -->
     <div id="viewLogin">
-      <div class="field"><label>账号</label><input id="loginAcct" placeholder="例如 CK-3K7D" autocomplete="username"></div>
+      <div class="field"><label>账号</label><input id="loginAcct" placeholder="例如 83725" autocomplete="username"></div>
       <div class="field"><label>密码</label><input id="loginPwd" type="password" placeholder="输入密码" autocomplete="current-password"></div>
       <button class="btn" onclick="doLogin()">登 录</button>
       <div class="auth-switch">
@@ -200,7 +200,7 @@
 
     <!-- 找回密码 -->
     <div id="viewForgot" class="hidden">
-      <div class="field"><label>账号</label><input id="fgtAcct" placeholder="例如 CK-3K7D"></div>
+      <div class="field"><label>账号</label><input id="fgtAcct" placeholder="例如 83725"></div>
       <div class="field"><label>密保答案</label><input id="fgtA" placeholder="回答密保问题"></div>
       <div class="field"><label>新密码</label><input id="fgtPwd" type="password" placeholder="设置新密码，至少 6 位"></div>
       <button class="btn" onclick="doResetPwd()">重置密码</button>
@@ -287,9 +287,8 @@ async function sha256(text){
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
 }
 function genAccount(){
-  const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let s=""; for(let i=0;i<4;i++) s+=chars[Math.floor(Math.random()*chars.length)];
-  return "CK-"+s;
+  let s=""; for(let i=0;i<5;i++) s+=Math.floor(Math.random()*10);
+  return s;
 }
 const WEEK_CN=["日","一","二","三","四","五","六"];
 const WEEK_KEYS=[null,"push","run",null,"pull","legs",null,null];
