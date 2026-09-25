@@ -237,7 +237,18 @@
 
   <!-- 管理视图 -->
   <div id="adminView" class="admin-panel hidden">
-    <div class="tip">🔧 管理功能建设中<br><br>以后这里可以放：全员打卡汇总、账号管理、数据导出等能力</div>
+    <div class="card" style="margin-bottom:12px">
+      <h3 style="font-size:15px;margin-bottom:4px">🔑 创建指定账号</h3>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:12px">管理员专属：给某个人定一个账号，创建后把账号和密码发给对方</p>
+      <div class="field"><label>指定账号</label><input id="admAcct" placeholder="2-12位字母或数字，如 XiaoWang88"></div>
+      <div class="field"><label>昵称</label><input id="admName" placeholder="对方怎么称呼"></div>
+      <div class="field"><label>初始密码</label><input id="admPwd" type="password" placeholder="至少 6 位"></div>
+      <div class="field"><label>密保问题（对方忘记密码时用）</label><input id="admQ" placeholder="如：你最喜欢的运动是什么？"></div>
+      <div class="field"><label>密保答案</label><input id="admA" placeholder="答案，记得告知对方牢记"></div>
+      <button class="btn" onclick="adminCreateUser()">创建账号</button>
+      <div class="auth-msg" id="admMsg"></div>
+    </div>
+    <div class="tip" style="color:var(--sub);font-size:13px;text-align:center;padding:20px 10px;border:1px dashed var(--line);border-radius:12px">更多管理能力（全员打卡汇总、数据导出等）建设中</div>
   </div>
 
   <div class="nav-tabs">
@@ -337,8 +348,6 @@ async function doRegister(){
     });
     if(rpcErr){ await sb.auth.signOut(); continue; }
     ok=true;
-    $("regMsg").classList.add("ok");
-    $("regMsg").innerHTML = "";
     // 展示随机账号
     const box = document.createElement("div");
     box.className="acct-box";
@@ -701,6 +710,33 @@ async function switchView(v){
   if(v==="stats") await loadStats();
 }
 function showAdmin(){ switchView("admin"); }
+
+/* 管理员：创建指定账号（创建后自动恢复管理员登录态） */
+async function adminCreateUser(){
+  const acct=$("admAcct").value.trim().toUpperCase(), name=$("admName").value.trim();
+  const pwd=$("admPwd").value, q=$("admQ").value.trim(), a=$("admA").value.trim();
+  if(!/^[A-Z0-9]{2,12}$/.test(acct)){ $("admMsg").textContent="账号只能是 2-12 位字母或数字"; return; }
+  if(!name||pwd.length<6||!q||!a){ $("admMsg").textContent="昵称、密码、密保问题、密保答案都要填完整"; return; }
+  // 保存当前(管理员)会话
+  const { data: { session: adminSession } } = await sb.auth.getSession();
+  const { error: signErr } = await sb.auth.signUp({ email: acct+"@local.checkin", password: pwd });
+  if(signErr){
+    if(adminSession) await sb.auth.setSession({ access_token: adminSession.access_token, refresh_token: adminSession.refresh_token });
+    $("admMsg").textContent="这个账号已被占用，换一个试试";
+    return;
+  }
+  const salt = Math.random().toString(36).slice(2,10);
+  const ah = await sha256(salt + a.toLowerCase());
+  const { error: rpcErr } = await sb.rpc("register_profile", {
+    p_account: acct, p_nickname: name, p_q: q, p_a_hash: ah, p_salt: salt
+  });
+  // 恢复管理员会话
+  if(adminSession) await sb.auth.setSession({ access_token: adminSession.access_token, refresh_token: adminSession.refresh_token });
+  if(rpcErr){ $("admMsg").textContent="创建失败，稍后再试一次"; return; }
+  $("admMsg").classList.add("ok");
+  $("admMsg").textContent = `✅ 创建成功！账号 ${acct}，初始密码 ${pwd}。把这两样发给对方即可`;
+  ["admAcct","admName","admPwd","admQ","admA"].forEach(id=>$(id).value="");
+}
 
 async function loadStats(){
   const { data: rows } = await sb.from("checkins").select("date, project_id, meta, created_at").eq("user_id", me.id).order("date", { ascending:true });
