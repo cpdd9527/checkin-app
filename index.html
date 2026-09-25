@@ -260,8 +260,8 @@
 
 <script>
 /* ================= 配置区（发布前填入） ================= */
-const SUPABASE_URL = "PASTE_YOUR_SUPABASE_URL";
-const SUPABASE_ANON_KEY = "PASTE_YOUR_SUPABASE_ANON_KEY";
+const SUPABASE_URL = "https://fpmsyhwuvhybtkjiqesm.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_awgAgTE5T8B7nhMCrxomrw_bE1e0Kfu";
 /* ======================================================== */
 
 const sb = SUPABASE_URL.startsWith("http") ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -355,15 +355,12 @@ async function doRegister(){
 async function doResetPwd(){
   const acct=$("fgtAcct").value.trim().toUpperCase(), ans=$("fgtA").value.trim(), np=$("fgtPwd").value;
   if(!acct||!ans||np.length<6){ $("fgtMsg").textContent="请完整填写，密码至少 6 位"; return; }
-  try{
-    const r = await fetch(SUPABASE_URL+"/functions/v1/reset-password", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ account: acct, answer: ans, newPassword: np })
-    });
-    const d = await r.json();
-    if(d.ok){ $("fgtMsg").classList.add("ok"); $("fgtMsg").textContent="✅ 密码已重置，用新密码登录吧"; }
-    else { $("fgtMsg").textContent = d.msg || "重置失败"; }
-  }catch(e){ $("fgtMsg").textContent="网络异常，稍后再试"; }
+  const { data, error } = await sb.rpc("reset_password_by_secret", {
+    p_account: acct, p_answer: ans, p_new_password: np
+  });
+  if(error){ $("fgtMsg").textContent="网络异常，稍后再试"; return; }
+  if(data==="ok"){ $("fgtMsg").classList.add("ok"); $("fgtMsg").textContent="✅ 密码已重置，用新密码登录吧"; }
+  else { $("fgtMsg").textContent = data || "重置失败"; }
 }
 
 function doLogout(){ sb.auth.signOut(); location.reload(); }
