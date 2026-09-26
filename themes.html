@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>打卡搭子 · 主题预览</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#0F1216;color:#F2F5F8;padding:24px 16px 40px}
+  h1{font-size:20px;text-align:center;margin-bottom:6px}
+  p.sub{text-align:center;color:#9AA7B4;font-size:13px;margin-bottom:24px}
+  .theme{border:1px solid #2C3745;border-radius:16px;overflow:hidden;margin-bottom:24px}
+  .theme-head{display:flex;align-items:center;gap:12px;padding:14px 16px;font-weight:800;font-size:15px}
+  .theme-head .num{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .theme-head .desc{font-weight:400;font-size:12px;color:#9AA7B4;flex:1}
+  .swatches{display:flex;gap:6px}
+  .sw{width:26px;height:26px;border-radius:8px;border:1px solid rgba(255,255,255,.15)}
+  .phone{width:100%;max-width:360px;margin:0 auto;padding:0 16px 20px}
+  .card{border-radius:14px;padding:14px;margin-bottom:10px}
+  .chat-row{display:flex;gap:8px;margin-bottom:8px;align-items:flex-end}
+  .bub{max-width:78%;padding:8px 12px;border-radius:12px;font-size:12px;line-height:1.5}
+  .bub.ai{border-top-left-radius:3px}
+  .bub.me{margin-left:auto;border-top-right-radius:3px;font-weight:600}
+  .checkin-btn{border:0;border-radius:12px;padding:12px;text-align:center;font-weight:900;font-size:13px;letter-spacing:.04em}
+  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+  .stat{border-radius:10px;padding:10px;text-align:center}
+  .stat .v{font-size:18px;font-weight:900}
+  .stat .k{font-size:10px;opacity:.7;margin-top:2px}
+  .tag{font-size:10px;opacity:.85;margin-bottom:6px}
+  .foot{text-align:center;color:#6B7886;font-size:12px;margin-top:4px}
+</style>
+</head>
+<body>
+<h1>打卡搭子 · 界面风格预览</h1>
+<p class="sub">下面 4 款都是同一个软件，只是"衣服"不同。看完告诉我选几号（或报我改编号）</p>
+
+<!-- ============ 主题1 ============ -->
+<div class="theme">
+  <div class="theme-head" style="background:#14181F">
+    <span class="num" style="background:#FF7A29;color:#1A120B">1</span>
+    深邃橙 · 现款
+    <span class="desc">深色 · 沉稳专注</span>
+    <span class="swatches"><span class="sw" style="background:#14181F"></span><span class="sw" style="background:#FF7A29"></span><span class="sw" style="background:#1E2631"></span></span>
+  </div>
+  <div style="background:#14181F;padding:14px 0">
+    <div class="phone">
+      <div class="card" style="background:#1E2631;border:1px solid #2C3745">
+        <div class="tag" style="color:#9AA7B4">打卡搭子 · 老王</div>
+        <div class="chat-row"><div class="bub ai" style="background:#1E2631;border:1px solid #2C3745;color:#F2F5F8">早，老王！昨天锻炼、学习都齐了，继续保持👏</div></div>
+        <div class="chat-row"><div class="bub me" style="background:#FF7A29;color:#1A120B">打卡！</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat" style="background:#1E2631;border:1px solid #2C3745"><div class="v" style="color:#FF9A5C">7</div><div class="k" style="color:#9AA7B4">连续打卡</div></div>
+        <div class="stat" style="background:#1E2631;border:1px solid #2C3745"><div class="v" style="color:#FF9A5C">86%</div><div class="k" style="color:#9AA7B4">本周完成率</div></div>
+      </div>
+      <div class="checkin-btn" style="background:linear-gradient(135deg,#FF7A29,#FFB26B);color:#1A120B">打卡</div>
+      <div class="foot" style="color:#6B7886">深色底 + 活力橙，专注有力量</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 主题2 ============ -->
+<div class="theme">
+  <div class="theme-head" style="background:#F2F7F5">
+    <span class="num" style="background:#2DD4A7;color:#04352A">2</span>
+    清爽薄荷
+    <span class="desc" style="color:#5C6B64">浅色 · 干净明亮</span>
+    <span class="swatches"><span class="sw" style="background:#F2F7F5"></span><span class="sw" style="background:#2DD4A7"></span><span class="sw" style="background:#FFFFFF"></span></span>
+  </div>
+  <div style="background:#F2F7F5;padding:14px 0">
+    <div class="phone">
+      <div class="card" style="background:#FFFFFF;border:1px solid #DDE8E3;box-shadow:0 4px 14px rgba(45,212,167,.10)">
+        <div class="tag" style="color:#7A8C84">打卡搭子 · 老王</div>
+        <div class="chat-row"><div class="bub ai" style="background:#FFFFFF;border:1px solid #DDE8E3;color:#22312C">早，老王！昨天锻炼、学习都齐了，继续保持👏</div></div>
+        <div class="chat-row"><div class="bub me" style="background:#2DD4A7;color:#04352A">打卡！</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat" style="background:#FFFFFF;border:1px solid #DDE8E3"><div class="v" style="color:#17B088">7</div><div class="k" style="color:#7A8C84">连续打卡</div></div>
+        <div class="stat" style="background:#FFFFFF;border:1px solid #DDE8E3"><div class="v" style="color:#17B088">86%</div><div class="k" style="color:#7A8C84">本周完成率</div></div>
+      </div>
+      <div class="checkin-btn" style="background:#2DD4A7;color:#04352A">打卡</div>
+      <div class="foot" style="color:#9AABA3">浅色底 + 薄荷绿，清爽自律</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 主题3 ============ -->
+<div class="theme">
+  <div class="theme-head" style="background:#171A2B">
+    <span class="num" style="background:linear-gradient(135deg,#8B5CF6,#EC4899);color:#fff">3</span>
+    星夜渐变
+    <span class="desc" style="color:#9CA3C6">深紫 · 年轻热血</span>
+    <span class="swatches"><span class="sw" style="background:#171A2B"></span><span class="sw" style="background:#8B5CF6"></span><span class="sw" style="background:#EC4899"></span></span>
+  </div>
+  <div style="background:#171A2B;padding:14px 0">
+    <div class="phone">
+      <div class="card" style="background:#222640;border:1px solid #33385C">
+        <div class="tag" style="color:#9CA3C6">打卡搭子 · 老王</div>
+        <div class="chat-row"><div class="bub ai" style="background:#222640;border:1px solid #33385C;color:#F2F4FB">早，老王！昨天锻炼、学习都齐了，继续保持👏</div></div>
+        <div class="chat-row"><div class="bub me" style="background:linear-gradient(135deg,#8B5CF6,#EC4899);color:#fff">打卡！</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat" style="background:#222640;border:1px solid #33385C"><div class="v" style="color:#C4B5FD">7</div><div class="k" style="color:#9CA3C6">连续打卡</div></div>
+        <div class="stat" style="background:#222640;border:1px solid #33385C"><div class="v" style="color:#C4B5FD">86%</div><div class="k" style="color:#9CA3C6">本周完成率</div></div>
+      </div>
+      <div class="checkin-btn" style="background:linear-gradient(135deg,#8B5CF6,#EC4899);color:#fff">打卡</div>
+      <div class="foot" style="color:#7A80A8">深紫 + 紫粉渐变，热血带感</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 主题4 ============ -->
+<div class="theme">
+  <div class="theme-head" style="background:#FBF7F1">
+    <span class="num" style="background:#E8874A;color:#fff">4</span>
+    暖阳米白
+    <span class="desc" style="color:#8A7D6D">暖色 · 温馨陪伴</span>
+    <span class="swatches"><span class="sw" style="background:#FBF7F1"></span><span class="sw" style="background:#E8874A"></span><span class="sw" style="background:#FFFFFF"></span></span>
+  </div>
+  <div style="background:#FBF7F1;padding:14px 0">
+    <div class="phone">
+      <div class="card" style="background:#FFFFFF;border:1px solid #EFE3D3;box-shadow:0 4px 14px rgba(232,135,74,.10)">
+        <div class="tag" style="color:#9B8C7A">打卡搭子 · 老王</div>
+        <div class="chat-row"><div class="bub ai" style="background:#FFFFFF;border:1px solid #EFE3D3;color:#4A4034">早，老王！昨天锻炼、学习都齐了，继续保持👏</div></div>
+        <div class="chat-row"><div class="bub me" style="background:#E8874A;color:#fff">打卡！</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat" style="background:#FFFFFF;border:1px solid #EFE3D3"><div class="v" style="color:#D96F2E">7</div><div class="k" style="color:#9B8C7A">连续打卡</div></div>
+        <div class="stat" style="background:#FFFFFF;border:1px solid #EFE3D3"><div class="v" style="color:#D96F2E">86%</div><div class="k" style="color:#9B8C7A">本周完成率</div></div>
+      </div>
+      <div class="checkin-btn" style="background:#E8874A;color:#fff">打卡</div>
+      <div class="foot" style="color:#A99A86">米白 + 暖橙棕，温柔像被陪着</div>
+    </div>
+  </div>
+</div>
+
+<div class="foot" style="margin-top:8px">看完选一个编号告诉我（比如"选2号"），我直接换上。也可以说"我喜欢xx的颜色/感觉"，我再调。</div>
+</body>
+</html>
