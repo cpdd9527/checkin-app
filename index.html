@@ -84,6 +84,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 
   /* 聊天区 */
   .chat{flex:1;overflow-y:auto;padding:14px 14px 6px;display:flex;flex-direction:column;gap:10px}
+  .chat-head{display:flex;align-items:center;justify-content:space-between;padding:8px 14px 6px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:12px;color:var(--dim)}
+  .chat-head b{color:var(--sub);font-size:12.5px}
+  .chat-head button{background:transparent;border:0;color:var(--acc2);font-size:12.5px;font-weight:700;cursor:pointer;padding:4px 8px;border-radius:8px}
+  .chat-head button:active{background:var(--card)}
   .msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:14.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
   .msg.ai{background:var(--card);border:1px solid var(--line);border-top-left-radius:4px;align-self:flex-start}
   .msg.me{background:var(--acc);color:#FFFFFF;font-weight:600;border-top-right-radius:4px;align-self:flex-end}
@@ -172,8 +176,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .admin-panel{padding:14px;overflow-y:auto;flex:1}
   .admin-panel .tip{color:var(--sub);font-size:13.5px;text-align:center;padding:40px 10px;border:1px dashed var(--line);border-radius:12px}
 
-  /* 训练/学习记录视图 */
-  .records{padding:14px;overflow-y:auto;flex:1}
+  /* 训练/学习记录视图 */  .records{padding:14px;overflow-y:auto;flex:1}
   .rec-head{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--sub)}
   .rec-head b{color:var(--acc2);font-size:16px}
   .rec-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
@@ -189,6 +192,15 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .rec-time{font-size:11px;color:var(--dim);margin-top:6px}
   .rec-empty{padding:50px 20px;text-align:center;color:var(--dim);font-size:13.5px;border:1px dashed var(--line);border-radius:12px}
   .rec-saved{font-size:12px;color:#6FBF7F;background:rgba(103,187,116,.08);border:1px solid rgba(103,187,116,.3);border-radius:20px;padding:4px 12px;width:fit-content;align-self:flex-start;margin-top:2px}
+
+  /* 对话历史面板 */
+  .hist-panel .panel{padding-bottom:10px}
+  .hist-list{max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+  .hist-day{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);cursor:pointer;font-size:13.5px;color:var(--txt)}
+  .hist-day:active{background:var(--card)}
+  .hist-day small{color:var(--dim);font-size:11.5px}
+  .hist-back{display:block;width:100%;margin-top:10px;text-align:center;color:var(--acc2);font-weight:700;font-size:13px;cursor:pointer;padding:6px}
+  .hist-empty{padding:24px 10px;text-align:center;color:var(--dim);font-size:13px}
 
   .nav-tabs{display:flex;border-top:1px solid var(--line);background:var(--bg2)}
   .nav-tabs button{flex:1;padding:11px;background:transparent;border:0;color:var(--dim);font-size:13.5px;font-weight:700;cursor:pointer}
@@ -273,6 +285,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 
   <!-- 打卡视图 -->
   <div id="mainView" style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <div class="chat-head"><b>💬 和搭子聊天</b><button onclick="openChatHistory()">📅 历史</button></div>
     <div class="chat" id="chatBox"></div>
     <div class="quick-inputs" id="quickInputs"></div>
     <div class="checkin-bar">
@@ -329,6 +342,15 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <div class="timer-display" id="timerDisplay">00:00:00</div>
     <div class="timer-hint" id="timerHint"></div>
     <button class="btn timer-stop" onclick="stopTimer()">■ 停止计时 · 打卡</button>
+  </div>
+</div>
+
+<!-- 对话历史面板 -->
+<div class="panel-mask hidden" id="histPanel">
+  <div class="panel hist-panel">
+    <h3>📅 按日期查看对话 <span class="x" onclick="$('histPanel').classList.add('hidden')">✕</span></h3>
+    <div class="hist-list" id="histList"></div>
+    <div class="hist-back" onclick="backToLatest()">↩ 回到最新对话</div>
   </div>
 </div>
 
@@ -819,6 +841,7 @@ function sendChat(){
     return;
   }
   addMsg(t,"me");
+  saveChat("user", t);
   aiChat(t);
 }
 /* 真AI对话：调 Supabase Edge Function -> 智谱大模型；失败自动降级本地话术 */
@@ -842,9 +865,11 @@ async function aiChat(t){
     const clean = reply.replace(recRe, "").trim();
     loading.innerHTML = `<span class="who">打卡搭子</span>` + esc(clean);
     if(rm){ await saveRecord(rm[1].trim(), rm[2].trim(), rm[3].trim(), rm[4].trim()); }
+    saveChat("assistant", clean);
   }catch(err){
     console.error("ai chat fallback:", err);
     loading.innerHTML = `<span class="who">打卡搭子</span>` + esc(localReply(t));
+    saveChat("assistant", localReply(t));
   }
   loading.style.opacity = "1";
   aiBusy = false;
@@ -902,7 +927,7 @@ function freeChatReply(t){ addMsg(localReply(t), "ai"); }
 /* ================= 启动对话（问候+算账+课表） ================= */
 async function bootChat(){
   const box=$("chatBox");
-  box.innerHTML="";
+  const histCount = await loadRecentChat();
   const w=me.nickname;
   const dow=new Date().getDay();
   const plan=FIXED_PLAN[dow];
@@ -937,6 +962,7 @@ async function bootChat(){
   if(debts.length){
     msg += `\n\n对了，这周还欠着：${debts.map(d=>`周${WEEK_CN[d.dow]}的${d.name}`).join("、")}。可以后移补上，但别赖账😏`;
   }
+  msg += histCount ? `\n\n（上面是之前的聊天，点「📅 历史」可以按日期回看）` : "";
   addMsg(msg,"ai");
   renderDailyTips();
 }
@@ -1030,6 +1056,91 @@ async function saveRecord(kind, title, status, detail){
     const loading = document.getElementById("typingMsg");
     if(loading && loading.parentNode){ loading.after(tip); }
   }catch(e){ console.error("save record failed", e); }
+}
+
+/* ================= 对话持久化 ================= */
+async function saveChat(role, content){
+  if(!me || !sb || !content) return;
+  try{
+    await sb.from("chat_messages").insert({ user_id: me.id, role, content });
+  }catch(e){ console.error("save chat failed", e); }
+}
+async function loadRecentChat(){
+  const box=$("chatBox");
+  if(!me || !sb){ box.innerHTML=""; return 0; }
+  const { data } = await sb.from("chat_messages")
+    .select("role,content")
+    .eq("user_id", me.id)
+    .order("created_at", { ascending:false })
+    .limit(30);
+  const list = (data||[]).slice().reverse();
+  box.innerHTML="";
+  for(const m of list){
+    const div=document.createElement("div");
+    div.className="msg "+(m.role==="user"?"me":"ai");
+    div.innerHTML = m.role==="user" ? esc(m.content) : `<span class="who">打卡搭子</span>`+esc(m.content);
+    box.appendChild(div);
+  }
+  box.scrollTop = box.scrollHeight;
+  return list.length;
+}
+async function openChatHistory(){
+  const panel=$("histPanel");
+  const listBox=$("histList");
+  panel.classList.remove("hidden");
+  listBox.innerHTML = `<div class="hist-empty">正在找…</div>`;
+  const { data } = await sb.from("chat_messages")
+    .select("created_at")
+    .eq("user_id", me.id)
+    .order("created_at", { ascending:false })
+    .limit(300);
+  const rows = data||[];
+  const days={};
+  for(const r of rows){
+    const d=String(r.created_at).slice(0,10);
+    days[d]=(days[d]||0)+1;
+  }
+  const ds=Object.keys(days).sort().reverse();
+  if(!ds.length){
+    listBox.innerHTML = `<div class="hist-empty">还没有聊天记录</div>`;
+    return;
+  }
+  listBox.innerHTML = ds.map(d=>{
+    const [y,m,dd]=d.split("-").map(Number);
+    const w = WEEK_CN[new Date(y, m-1, dd).getDay()];
+    return `<div class="hist-day" onclick="loadChatByDate('${d}')"><span>${y}年${m}月${dd}日 周${w}</span><small>${days[d]} 条</small></div>`;
+  }).join("");
+}
+async function loadChatByDate(dstr){
+  const panel=$("histPanel");
+  const box=$("chatBox");
+  panel.classList.add("hidden");
+  const { data } = await sb.from("chat_messages")
+    .select("role,content,created_at")
+    .eq("user_id", me.id)
+    .gte("created_at", dstr+"T00:00:00")
+    .lt("created_at", dstr+"T23:59:59.999")
+    .order("created_at", { ascending:true });
+  const list = data||[];
+  box.innerHTML="";
+  if(!list.length){
+    const div=document.createElement("div");
+    div.className="msg ai";
+    div.innerHTML = `<span class="who">打卡搭子</span>那天没有对话哦，看看别的日子吧～`;
+    box.appendChild(div);
+  } else {
+    for(const m of list){
+      const div=document.createElement("div");
+      div.className="msg "+(m.role==="user"?"me":"ai");
+      div.innerHTML = m.role==="user" ? esc(m.content) : `<span class="who">打卡搭子</span>`+esc(m.content);
+      box.appendChild(div);
+    }
+  }
+  box.scrollTop = box.scrollHeight;
+}
+async function backToLatest(){
+  $("histPanel").classList.add("hidden");
+  await loadRecentChat();
 }
 
 function showAdmin(){ switchView("admin"); }
