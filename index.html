@@ -1093,7 +1093,7 @@ async function openChatHistory(){
     .select("created_at")
     .eq("user_id", me.id)
     .order("created_at", { ascending:false })
-    .limit(300);
+    .limit(1000);
   const rows = data||[];
   const days={};
   for(const r of rows){
