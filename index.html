@@ -55,6 +55,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     width:100%;background:var(--acc);color:#FFFFFF;border:0;border-radius:10px;
     padding:12px;font-size:15px;font-weight:800;cursor:pointer;margin-top:6px;
   }
+  .rem-row{display:flex;gap:18px;margin:10px 0 2px}
+  .rem-item{font-size:13px;color:var(--sub);display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
+  .rem-item input{accent-color:var(--acc);width:15px;height:15px;cursor:pointer}
   .btn:active{transform:scale(.98)}
   .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--sub);font-weight:600}
   .auth-switch{display:flex;gap:10px;margin-top:14px}
@@ -188,6 +191,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <div id="viewLogin">
       <div class="field"><label>账号</label><input id="loginAcct" placeholder="例如 83725" autocomplete="username"></div>
       <div class="field"><label>密码</label><input id="loginPwd" type="password" placeholder="输入密码" autocomplete="current-password"></div>
+      <div class="rem-row">
+        <label class="rem-item"><input type="checkbox" id="remAcct"> 记住账号</label>
+        <label class="rem-item"><input type="checkbox" id="remPwd"> 记住密码</label>
+      </div>
       <button class="btn" onclick="doLogin()">登 录</button>
       <div class="auth-switch">
         <button onclick="showAuth('reg')">没有账号？注册</button>
@@ -358,11 +365,28 @@ $("regQ").addEventListener("change", ()=>{
   $("regQCustomWrap").classList.toggle("hidden", $("regQ").value!=="自定义问题");
 });
 
+/* 记住账号/密码 */
+function loadRemember(){
+  try{
+    const a = localStorage.getItem("ck_acct");
+    const p = localStorage.getItem("ck_pwd");
+    if(a){ $("loginAcct").value = a; $("remAcct").checked = true; }
+    if(p){ $("loginPwd").value = p; $("remPwd").checked = true; }
+  }catch(e){}
+}
+function saveRemember(acct, pwd){
+  try{
+    if($("remAcct").checked) localStorage.setItem("ck_acct", acct); else localStorage.removeItem("ck_acct");
+    if($("remPwd").checked) localStorage.setItem("ck_pwd", pwd); else localStorage.removeItem("ck_pwd");
+  }catch(e){}
+}
+
 async function doLogin(){
   const acct=$("loginAcct").value.trim().toUpperCase(), pwd=$("loginPwd").value;
   if(!acct||!pwd){ $("loginMsg").textContent="账号和密码都要填哦"; return; }
   const { error } = await sb.auth.signInWithPassword({ email: acct+"@local.checkin", password: pwd });
   if(error){ $("loginMsg").textContent = "账号或密码不对，再试试"; return; }
+  saveRemember(acct, pwd);
   await loadApp();
 }
 
@@ -893,6 +917,7 @@ window.addEventListener("DOMContentLoaded", async ()=>{
   }
   $("loginPwd").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
   $("loginAcct").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+  loadRemember();
   $("chatInput").focus();
   const { data: { session } } = await sb.auth.getSession();
   if(session) await loadApp();
