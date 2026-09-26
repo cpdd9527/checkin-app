@@ -518,7 +518,7 @@ function renderQuick(chips){
 function clearQuick(){ $("quickInputs").innerHTML=""; }
 
 async function chatReply(text){
-  if(!convState) return;
+  if(!convState){ addMsg(text,"me"); aiChat(text); return; }
   addMsg(text, "me");
   clearQuick();
   try{
@@ -714,6 +714,9 @@ async function calcTotal(pid){
 }
 
 /* ================= 自由聊天 ================= */
+function esc(s){
+  const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML;
+}
 function sendChat(){
   const inp=$("chatInput");
   const t=inp.value.trim();
@@ -724,9 +727,54 @@ function sendChat(){
     return;
   }
   addMsg(t,"me");
-  freeChatReply(t);
+  aiChat(t);
 }
-function freeChatReply(t){
+/* 真AI对话：调 Supabase Edge Function -> 智谱大模型；失败自动降级本地话术 */
+let aiBusy = false;
+async function aiChat(t){
+  if(aiBusy){ addMsg("稍等，我先把上一句回完~","ai"); return; }
+  aiBusy = true;
+  const loading = addMsg("搭子正在输入…","ai");
+  loading.id = "typingMsg";
+  loading.style.opacity = ".75";
+  try{
+    const hist = chatHistory(t);
+    const { data, error } = await sb.functions.invoke("chat-ai", {
+      body: { messages: hist, system: aiSystem() }
+    });
+    if(error) throw new Error(error.message || "调用失败");
+    if(!data || data.error) throw new Error((data && data.error) || "无回复");
+    loading.innerHTML = `<span class="who">打卡搭子</span>` + esc(data.reply);
+  }catch(err){
+    console.error("ai chat fallback:", err);
+    loading.innerHTML = `<span class="who">打卡搭子</span>` + esc(localReply(t));
+  }
+  loading.style.opacity = "1";
+  aiBusy = false;
+}
+function chatHistory(cur){
+  const out=[];
+  const nodes = document.querySelectorAll("#chatBox .msg");
+  const arr = Array.from(nodes).slice(-10);
+  for(const el of arr){
+    if(el.id === "typingMsg") continue;
+    const who = el.classList.contains("me") ? "user" : "assistant";
+    let txt = (el.innerText||"").replace(/^打卡搭子/,"").trim();
+    if(txt) out.push({ role: who, content: txt });
+  }
+  out.push({ role: "user", content: cur });
+  return out;
+}
+function aiSystem(){
+  const w = (me && me.nickname) || "朋友";
+  const dow = new Date().getDay();
+  const plan = FIXED_PLAN[dow];
+  let s = "你是「打卡搭子」，一个说话亲切、带点幽默、以鼓励为主的AI伙伴。用户叫" + w + "。" +
+          "今天是周" + WEEK_CN[dow] + "，按固定课表该练「" + plan.name + "」。" +
+          "回复要口语化、简短（两三句内）、像朋友聊天，多鼓励，少说教。可以适当调侃用户偷懒。";
+  return s;
+}
+function localReply(t){
   try{
     const w=(me&&me.nickname)||"朋友";
     const replies=[
@@ -739,18 +787,19 @@ function freeChatReply(t){
       [["你是谁","你叫什么"], `我是你的打卡搭子，负责夸你、盯你、偶尔损你两句😎`],
     ];
     for(const [keys, rep] of replies){
-      if(keys.some(k=>t.includes(k))){ addMsg(rep,"ai"); return; }
+      if(keys.some(k=>t.includes(k))) return rep;
     }
     const generic=[
       `嗯嗯，${w}，继续说，我在听👂`,
       `这话有点意思，展开说说？🤔`,
       `不管聊啥，别忘了今天的打卡任务哦😉`,
     ];
-    addMsg(generic[Math.floor(Math.random()*generic.length)], "ai");
+    return generic[Math.floor(Math.random()*generic.length)];
   }catch(err){
-    try{ addMsg("嗯嗯，我在听，你继续说👂","ai"); }catch(_){}
+    return "嗯嗯，我在听，你继续说👂";
   }
 }
+function freeChatReply(t){ addMsg(localReply(t), "ai"); }
 
 /* ================= 启动对话（问候+算账+课表） ================= */
 async function bootChat(){
