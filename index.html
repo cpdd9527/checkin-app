@@ -140,6 +140,12 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .proj-ops button.del{color:var(--danger)}
   .proj-card.manage-mode{background:var(--bg2)}
 
+  /* 计时面板 */
+  .timer-panel{text-align:center}
+  .timer-display{font-size:46px;font-weight:900;letter-spacing:3px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--acc2);margin:14px 0 4px;line-height:1.2}
+  .timer-hint{color:var(--sub);font-size:13px;margin-bottom:14px}
+  .timer-stop{background:var(--danger)!important;box-shadow:0 6px 20px rgba(217,87,74,.28)!important}
+
   /* 统计视图 */
   .stats{padding:14px;overflow-y:auto;flex:1}
   .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
@@ -294,6 +300,15 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
       <input id="newProjName" placeholder="添加新项目，如：喝水 / 背单词">
       <button onclick="addProject()">＋添加</button>
     </div>
+  </div>
+</div>
+
+<div class="panel-mask hidden" id="timerPanel">
+  <div class="panel timer-panel">
+    <h3>计时中 <span class="x" onclick="cancelTimer()" title="取消计时">✕</span></h3>
+    <div class="timer-display" id="timerDisplay">00:00:00</div>
+    <div class="timer-hint" id="timerHint"></div>
+    <button class="btn timer-stop" onclick="stopTimer()">■ 停止计时 · 打卡</button>
   </div>
 </div>
 
@@ -605,22 +620,30 @@ function startCheckin(pid){
       next: async function(text){
         if(this.step==="type"){
           this.data.type = text;
-          await doCheckinRecord(this.project, { type:text });
-          const plan = todayPlan();
-          let praise;
-          if(plan && text===plan.name) praise = `今天本来就是${plan.name}，按计划打卡，稳！👊`;
-          else if(plan) praise = `今天是${plan.name}，你练了${text}——这是主动加练还是计划后移？都行，练了就算数！🔥`;
-          else praise = `不是计划日还练了${text}，你这自律有点吓人🤯`;
-          const streak = await calcStreak(this.project.id);
-          addCard(`
-            <div class="sum-card">
-              <div class="sum-title">✅ ${this.project.name}打卡成功 · ${text}</div>
-              <div class="row"><span>连续打卡</span><b>${streak} 天</b></div>
-              <div class="row"><span>今日项目次数</span><b>${(this.project.today||0)+1} 次</b></div>
-              <div class="row"><span>状态</span><b>${praise}</b></div>
-            </div>`);
-          convState=null;
-          renderDailyTips();
+          this.step="method";
+          addMsg(`好，练${text}。现在开始计时，还是已经练完直接打卡？`,"ai");
+          renderQuick(["开始计时","直接打卡"]);
+        } else if(this.step==="method"){
+          if(text==="开始计时"){
+            startTimer("锻炼");
+          } else {
+            await doCheckinRecord(this.project, { type:this.data.type });
+            const plan = todayPlan();
+            let praise;
+            if(plan && text && plan.name && this.data.type===plan.name) praise = `今天本来就是${plan.name}，按计划打卡，稳！👊`;
+            else if(plan) praise = `今天是${plan.name}，你练了${this.data.type}——这是主动加练还是计划后移？都行，练了就算数！🔥`;
+            else praise = `不是计划日还练了${this.data.type}，你这自律有点吓人🤯`;
+            const streak = await calcStreak(this.project.id);
+            addCard(`
+              <div class="sum-card">
+                <div class="sum-title">✅ ${this.project.name}打卡成功 · ${this.data.type}</div>
+                <div class="row"><span>连续打卡</span><b>${streak} 天</b></div>
+                <div class="row"><span>今日项目次数</span><b>${(this.project.today||0)+1} 次</b></div>
+                <div class="row"><span>状态</span><b>${praise}</b></div>
+              </div>`);
+            convState=null;
+            renderDailyTips();
+          }
         }
       }
     };
@@ -633,42 +656,28 @@ function startCheckin(pid){
       next: async function(text){
         if(this.step==="subject"){
           this.data.subject = text;
-          this.step="duration";
-          addMsg("学了多久？⏰","ai");
-          renderQuick(["30分钟","1小时","1.5小时","2小时","自定义"]);
-        } else if(this.step==="duration"){
-          let dur = text;
-          if(text==="自定义"){ this.step="durationCustom"; addMsg("输入学习时长，比如 45分钟","ai"); return; }
-          await doCheckinRecord(this.project, { subject:this.data.subject, duration:dur });
-          const streak = await calcStreak(this.project.id);
-          const total = await calcTotal(this.project.id);
-          addCard(`
-            <div class="sum-card">
-              <div class="sum-title">📚 今日学习打卡 · 总结</div>
-              <div class="row"><span>科目</span><b>${this.data.subject}</b></div>
-              <div class="row"><span>时长</span><b>${dur}</b></div>
-              <div class="row"><span>连续学习</span><b>${streak} 天</b></div>
-              <div class="row"><span>累计学习</span><b>${total} 次</b></div>
-            </div>`);
-          const words = ["又是充实的一天，知识在悄悄涨📈","连${dur}都能坚持，稳得一批👍","今天这波学习，值得给自己加个鸡腿🍗"];
-          addMsg(words[Math.floor(Math.random()*words.length)].replace("${dur}",dur), "ai");
-          convState=null;
-          renderDailyTips();
-        } else if(this.step==="durationCustom"){
-          await doCheckinRecord(this.project, { subject:this.data.subject, duration:text });
-          const streak = await calcStreak(this.project.id);
-          const total = await calcTotal(this.project.id);
-          addCard(`
-            <div class="sum-card">
-              <div class="sum-title">📚 今日学习打卡 · 总结</div>
-              <div class="row"><span>科目</span><b>${this.data.subject}</b></div>
-              <div class="row"><span>时长</span><b>${text}</b></div>
-              <div class="row"><span>连续学习</span><b>${streak} 天</b></div>
-              <div class="row"><span>累计学习</span><b>${total} 次</b></div>
-            </div>`);
-          addMsg("记下了，今天这波学习很扎实📈","ai");
-          convState=null;
-          renderDailyTips();
+          this.step="method";
+          addMsg(`好，学${text}。现在开始计时，还是已经学完直接打卡？`,"ai");
+          renderQuick(["开始计时","直接打卡"]);
+        } else if(this.step==="method"){
+          if(text==="开始计时"){
+            startTimer("学习");
+          } else {
+            await doCheckinRecord(this.project, { subject:this.data.subject });
+            const streak = await calcStreak(this.project.id);
+            const total = await calcTotal(this.project.id);
+            addCard(`
+              <div class="sum-card">
+                <div class="sum-title">📚 今日学习打卡 · 总结</div>
+                <div class="row"><span>科目</span><b>${this.data.subject}</b></div>
+                <div class="row"><span>连续学习</span><b>${streak} 天</b></div>
+                <div class="row"><span>累计学习</span><b>${total} 次</b></div>
+              </div>`);
+            const words = ["又是充实的一天，知识在悄悄涨📈","今天这波学习，值得给自己加个鸡腿🍗","学完就打卡，自律到没朋友👍"];
+            addMsg(words[Math.floor(Math.random()*words.length)], "ai");
+            convState=null;
+            renderDailyTips();
+          }
         }
       }
     };
@@ -691,6 +700,69 @@ function startCheckin(pid){
       renderDailyTips();
     })();
   }
+}
+
+/* ================= 计时打卡 ================= */
+let timerInt=null, timerStartAt=0, timerMode=null, timerProject=null, timerMeta={};
+function startTimer(mode){
+  timerMode = mode;
+  timerProject = convState ? convState.project : null;
+  timerMeta = convState ? Object.assign({}, convState.data) : {};
+  timerStartAt = Date.now();
+  $("timerHint").textContent = mode==="锻炼" ? "动起来！练完点下方「停止计时」" : "学起来！结束点下方「停止计时」";
+  $("timerPanel").classList.remove("hidden");
+  renderTimer();
+  clearInterval(timerInt);
+  timerInt = setInterval(renderTimer, 500);
+}
+function renderTimer(){
+  const s = Math.floor((Date.now()-timerStartAt)/1000);
+  const h = String(Math.floor(s/3600)).padStart(2,"0");
+  const m = String(Math.floor(s%3600/60)).padStart(2,"0");
+  const ss = String(s%60).padStart(2,"0");
+  $("timerDisplay").textContent = h+":"+m+":"+ss;
+}
+async function stopTimer(){
+  clearInterval(timerInt);
+  const sec = Math.floor((Date.now()-timerStartAt)/1000);
+  const minutes = sec<60 ? 1 : Math.round(sec/60);
+  $("timerPanel").classList.add("hidden");
+  const p = timerProject;
+  const meta = Object.assign({}, timerMeta, { duration_min: minutes });
+  convState = null;
+  if(!p) return;
+  await doCheckinRecord(p, meta);
+  const streak = await calcStreak(p.id);
+  if(timerMode==="锻炼"){
+    const plan = todayPlan();
+    let praise;
+    if(plan && meta.type===plan.name) praise = `按计划练的${meta.type}，${minutes}分钟，一点不含糊👊`;
+    else praise = `练了${meta.type} ${minutes}分钟，这劲头可以🔥`;
+    addCard(`
+      <div class="sum-card">
+        <div class="sum-title">✅ 锻炼打卡成功 · ${meta.type||""}</div>
+        <div class="row"><span>时长</span><b>${minutes} 分钟</b></div>
+        <div class="row"><span>连续打卡</span><b>${streak} 天</b></div>
+        <div class="row"><span>状态</span><b>${praise}</b></div>
+      </div>`);
+    addMsg("计时到！今天的锻炼记上了，牛逼！🔥","ai");
+  } else {
+    addCard(`
+      <div class="sum-card">
+        <div class="sum-title">📚 学习打卡成功 · ${meta.subject||""}</div>
+        <div class="row"><span>时长</span><b>${minutes} 分钟</b></div>
+        <div class="row"><span>连续学习</span><b>${streak} 天</b></div>
+      </div>`);
+    addMsg("计时到！${minutes}分钟的学习稳稳拿下，专注力+1📈".replace("${minutes}",minutes),"ai");
+  }
+  renderDailyTips();
+}
+function cancelTimer(){
+  clearInterval(timerInt);
+  $("timerPanel").classList.add("hidden");
+  convState = null;
+  addMsg("计时取消了，想打卡的时候随时喊我~","ai");
+  renderQuick(["打卡","聊天"]);
 }
 
 async function doCheckinRecord(project, meta){
