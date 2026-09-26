@@ -285,7 +285,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 
   <!-- 打卡视图 -->
   <div id="mainView" style="flex:1;display:flex;flex-direction:column;min-height:0">
-    <div class="chat-head"><b>💬 和搭子聊天</b><button onclick="openChatHistory()">📅 历史</button></div>
+    <div class="chat-head"><b>💬 和搭搭聊天</b><button onclick="openChatHistory()">📅 历史</button></div>
     <div class="chat" id="chatBox"></div>
     <div class="quick-inputs" id="quickInputs"></div>
     <div class="checkin-bar">
@@ -548,7 +548,7 @@ function addMsg(text, who){
   const box=$("chatBox");
   const div=document.createElement("div");
   div.className="msg "+(who==="me"?"me":"ai");
-  div.innerHTML = who==="me" ? text : `<span class="who">打卡搭子</span>${text}`;
+  div.innerHTML = who==="me" ? text : `<span class="who">搭搭</span>${text}`;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
@@ -557,7 +557,7 @@ function addCard(html){
   const box=$("chatBox");
   const div=document.createElement("div");
   div.className="msg ai";
-  div.innerHTML = `<span class="who">打卡搭子</span>${html}`;
+  div.innerHTML = `<span class="who">搭搭</span>${html}`;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
@@ -849,7 +849,7 @@ let aiBusy = false;
 async function aiChat(t){
   if(aiBusy){ addMsg("稍等，我先把上一句回完~","ai"); return; }
   aiBusy = true;
-  const loading = addMsg("搭子正在输入…","ai");
+  const loading = addMsg("搭搭正在输入…","ai");
   loading.id = "typingMsg";
   loading.style.opacity = ".75";
   try{
@@ -863,12 +863,12 @@ async function aiChat(t){
     const recRe = /\[记:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\|([^\]]*)\]/;
     const rm = reply.match(recRe);
     const clean = reply.replace(recRe, "").trim();
-    loading.innerHTML = `<span class="who">打卡搭子</span>` + esc(clean);
+    loading.innerHTML = `<span class="who">搭搭</span>` + esc(clean);
     if(rm){ await saveRecord(rm[1].trim(), rm[2].trim(), rm[3].trim(), rm[4].trim()); }
     saveChat("assistant", clean);
   }catch(err){
     console.error("ai chat fallback:", err);
-    loading.innerHTML = `<span class="who">打卡搭子</span>` + esc(localReply(t));
+    loading.innerHTML = `<span class="who">搭搭</span>` + esc(localReply(t));
     saveChat("assistant", localReply(t));
   }
   loading.style.opacity = "1";
@@ -881,7 +881,7 @@ function chatHistory(cur){
   for(const el of arr){
     if(el.id === "typingMsg") continue;
     const who = el.classList.contains("me") ? "user" : "assistant";
-    let txt = (el.innerText||"").replace(/^打卡搭子/,"").trim();
+    let txt = (el.innerText||"").replace(/^搭搭/,"").trim();
     if(txt) out.push({ role: who, content: txt });
   }
   out.push({ role: "user", content: cur });
@@ -891,7 +891,7 @@ function aiSystem(){
   const w = (me && me.nickname) || "朋友";
   const dow = new Date().getDay();
   const plan = FIXED_PLAN[dow];
-  let s = "你是「打卡搭子」，一个说话亲切、带点幽默、以鼓励为主的AI伙伴。用户叫" + w + "。" +
+  let s = "你是「搭搭」，一个说话亲切、带点幽默、以鼓励为主的AI伙伴。你的名字叫搭搭，用户叫你「搭搭」「搭搭，……」「搭搭，帮我……」「搭搭在吗」这类话时，要用搭搭的身份热情接话，用名字回应，例如「在呢！……」或「搭搭来了！……」。用户叫" + w + "。" +
           "今天是周" + WEEK_CN[dow] + "，按固定课表该练「" + plan.name + "」。" +
           "回复要口语化、简短（两三句内）、像朋友聊天，多鼓励，少说教。可以适当调侃用户偷懒。" +
           "另外：如果用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。除了这种情况，其他时候绝对不要输出这个标记，也不要改变你正常说话的语气。";
@@ -907,7 +907,8 @@ function localReply(t){
       [["打卡","怎么打卡"], `点下面橙色大按钮「打卡」，选个项目就行～`],
       [["学习","学什么"], `你今天想学啥都行，先学起来，量变到质变📚`],
       [["锻炼","练什么","健身"], `按课表：${FIXED_PLAN[new Date().getDay()].name}。特殊情况可以后移，但别欠太久👊`],
-      [["你是谁","你叫什么"], `我是你的打卡搭子，负责夸你、盯你、偶尔损你两句😎`],
+      [["搭搭","搭搭在吗","搭搭在么"], `哎，${w}叫我？是准备打卡，还是想让我夸你两句😏`],
+      [["你是谁","你叫什么"], `我是搭搭，你的打卡搭子，负责夸你、盯你、偶尔损你两句😎`],
     ];
     for(const [keys, rep] of replies){
       if(keys.some(k=>t.includes(k))) return rep;
@@ -948,6 +949,9 @@ async function bootChat(){
 
   const greets=["早","晚上好","嗨","来了啊","哟"];
   msg = `${greets[Math.floor(Math.random()*greets.length)]}，${w}${todayCount>0?`，今天已经打卡 ${todayCount} 次，可以啊🔥`:"！"}\n`;
+  if(histCount===0){
+    msg = `嗨，${w}！先认识一下：我是搭搭，你的打卡搭子——负责盯你锻炼、陪你学习、夸你两句、偶尔损你一嘴。从今天起咱们就搭伙了，打卡或者直接跟我聊天都行！\n\n` + msg;
+  }
   if(yMiss.length){
     msg += `先算个账：昨天「${yMiss.join("、")}」你可是空着的😏\n今天补上，别让我再念叨了。\n`;
   } else {
@@ -1078,7 +1082,7 @@ async function loadRecentChat(){
   for(const m of list){
     const div=document.createElement("div");
     div.className="msg "+(m.role==="user"?"me":"ai");
-    div.innerHTML = m.role==="user" ? esc(m.content) : `<span class="who">打卡搭子</span>`+esc(m.content);
+    div.innerHTML = m.role==="user" ? esc(m.content) : `<span class="who">搭搭</span>`+esc(m.content);
     box.appendChild(div);
   }
   box.scrollTop = box.scrollHeight;
@@ -1126,13 +1130,13 @@ async function loadChatByDate(dstr){
   if(!list.length){
     const div=document.createElement("div");
     div.className="msg ai";
-    div.innerHTML = `<span class="who">打卡搭子</span>那天没有对话哦，看看别的日子吧～`;
+    div.innerHTML = `<span class="who">搭搭</span>那天没有对话哦，看看别的日子吧～`;
     box.appendChild(div);
   } else {
     for(const m of list){
       const div=document.createElement("div");
       div.className="msg "+(m.role==="user"?"me":"ai");
-      div.innerHTML = m.role==="user" ? esc(m.content) : `<span class="who">打卡搭子</span>`+esc(m.content);
+      div.innerHTML = m.role==="user" ? esc(m.content) : `<span class="who">搭搭</span>`+esc(m.content);
       box.appendChild(div);
     }
   }
