@@ -42,6 +42,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .auth-card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px 24px;box-shadow:0 20px 50px rgba(120,90,50,.14)}
   .auth-logo{text-align:center;margin-bottom:18px}
   .auth-logo .icon{font-size:40px;line-height:1}
+  .auth-logo .ip-avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;display:inline-block;box-shadow:0 6px 16px rgba(90,160,220,.22);vertical-align:middle}
+  .msg .sticker{height:76px;width:76px;border-radius:14px;object-fit:cover;margin-top:6px;display:block}
   .auth-logo h1{font-size:22px;font-weight:800;margin-top:6px}
   .auth-logo p{color:var(--sub);font-size:13px;margin-top:4px}
   .field{margin-bottom:14px}
@@ -218,7 +220,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 <div class="auth-wrap" id="authView">
   <div class="auth-card">
     <div class="auth-logo">
-      <div class="icon">💪</div>
+      <div class="icon"><img class="ip-avatar" src="https://aka.doubaocdn.com/s/4VugrO5Q6k" alt="搭搭"></div>
       <h1>打卡搭子</h1>
       <p>锻炼 · 学习 · 每天都有AI陪着你</p>
     </div>
@@ -548,7 +550,7 @@ function addMsg(text, who){
   const box=$("chatBox");
   const div=document.createElement("div");
   div.className="msg "+(who==="me"?"me":"ai");
-  div.innerHTML = who==="me" ? text : `<span class="who">搭搭</span>${text}`;
+  div.innerHTML = who==="me" ? text : `<span class="who">搭搭</span>${attachSticker(text)}`;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
@@ -831,6 +833,27 @@ async function calcTotal(pid){
 function esc(s){
   const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML;
 }
+/* 搭搭表情包：按回复内容自动匹配场景，追加在AI消息末尾 */
+const STICKERS={
+  success:"https://aka.doubaocdn.com/s/lizGGZ0t4V",
+  cheer:"https://aka.doubaocdn.com/s/2gZegbXGca",
+  lazy:"https://aka.doubaocdn.com/s/9zql58m7gB",
+  hi:"https://aka.doubaocdn.com/s/JsOZLVVVv1",
+  praise:"https://aka.doubaocdn.com/s/plxQ5uk5XQ"
+};
+function pickSticker(text){
+  const t=String(text||"");
+  if(/打卡成功|打卡完成|任务完成|记上了|拿下了|完成打卡|今天的锻炼|稳稳拿下/.test(t)) return STICKERS.success;
+  if(/没打卡|别偷懒|偷懒|欠债|欠了|该打卡了/.test(t)) return STICKERS.lazy;
+  if(/加油|坚持|努力|顶住|别放弃|自律|拿捏/.test(t)) return STICKERS.cheer;
+  if(/你好|在呢|欢迎|回来|认识一下|嗨/.test(t)) return STICKERS.hi;
+  if(/真棒|厉害|优秀|太强|了不起|牛逼/.test(t)) return STICKERS.praise;
+  return "";
+}
+function attachSticker(text){
+  const s=pickSticker(text);
+  return s ? text + `<img class="sticker" src="${s}" alt="搭搭表情">` : text;
+}
 function sendChat(){
   const inp=$("chatInput");
   const t=inp.value.trim();
@@ -863,12 +886,12 @@ async function aiChat(t){
     const recRe = /\[记:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\|([^\]]*)\]/;
     const rm = reply.match(recRe);
     const clean = reply.replace(recRe, "").trim();
-    loading.innerHTML = `<span class="who">搭搭</span>` + esc(clean);
+    loading.innerHTML = `<span class="who">搭搭</span>` + attachSticker(esc(clean));
     if(rm){ await saveRecord(rm[1].trim(), rm[2].trim(), rm[3].trim(), rm[4].trim()); }
     saveChat("assistant", clean);
   }catch(err){
     console.error("ai chat fallback:", err);
-    loading.innerHTML = `<span class="who">搭搭</span>` + esc(localReply(t));
+    loading.innerHTML = `<span class="who">搭搭</span>` + attachSticker(localReply(t));
     saveChat("assistant", localReply(t));
   }
   loading.style.opacity = "1";
