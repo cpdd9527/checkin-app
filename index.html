@@ -79,7 +79,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .mini-btn{background:var(--card);border:1px solid var(--line);color:var(--acc2);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600}
   .mini-btn:active{transform:scale(.96)}
   .mini-btn.danger{color:#c0392b;border-color:rgba(192,57,43,.35);background:rgba(192,57,43,.05)}
-  .plan-panel{max-width:560px}
+  .plan-panel{max-width:560px;max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .plan-toast{position:sticky;top:0;z-index:5;background:rgba(46,160,67,.95);color:#fff;font-size:13px;font-weight:600;padding:8px 12px;border-radius:10px;margin-bottom:8px;text-align:center}
   .plan-sec-title{font-size:13px;font-weight:700;color:var(--txt);margin:14px 0 8px;padding-top:12px;border-top:1px dashed var(--line)}
   .plan-sec-title:first-of-type{border-top:0}
   .plan-proj-row{display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px}
@@ -373,6 +374,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 <div class="panel-mask hidden" id="planPanel">
   <div class="panel plan-panel">
     <h3>打卡项目与周计划 <span class="x" onclick="closePlanPanel()">✕</span></h3>
+    <div id="planToast" class="plan-toast hidden"></div>
 
     <!-- 视图1：项目列表 -->
     <div id="planProjListBox">
@@ -405,7 +407,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
           <input id="actReps" placeholder="每几个" style="width:68px">
           <button class="mini-btn" onclick="planAddAction()">＋添加</button>
         </div>
-        <button class="mini-btn" onclick="planBackToWeek()" style="width:100%;margin-top:2px">完成这天的动作</button>
+        <button class="mini-btn" onclick="planBackToWeek()" style="width:190px;margin:38px auto 0;display:block;background:var(--acc);color:#fff;border:none">完成这天的动作</button>
         <div class="auth-msg" id="planDayMsg"></div>
       </div>
 
@@ -699,7 +701,7 @@ function openProjectPanel(){
   $("projPanel").classList.remove("hidden");
 }
 function closePanel(){ $("projPanel").classList.add("hidden"); }
-function closePlanPanel(){ $("planPanel").classList.add("hidden"); }
+function closePlanPanel(){ $("planPanel").classList.add("hidden"); $("planToast").classList.add("hidden"); }
 
 /* ================= 项目管理 + 周计划 ================= */
 let plansByProj = {};    // {projectId:{dow:{title, actions:[{id,name,sets,reps}]}}}
@@ -907,20 +909,20 @@ async function planSaveProject(){
     }
     await loadProjects();
     await loadAllPlans();
-    if(!editProj.id){
-      msgEl.classList.add("ok");
-      msgEl.textContent = "✅ 已创建「"+name+"」";
-      planExitEdit();
-      return;
-    }
-    editProj.id = pid; editProj.name = name;
-    msgEl.classList.add("ok");
-    msgEl.textContent = "✅ 已保存「"+name+"」，课表 "+Object.keys(editProj.week).filter(d=>editProj.week[d].title).length+" 天";
-    renderPlanProjList();
+    const days = Object.keys(editProj.week).filter(d=>editProj.week[d].title).length;
+    planExitEdit();
+    showPlanToast("✅ 已保存「"+name+"」" + (days ? "，课表 "+days+" 天" : ""));
   }catch(err){
     console.error("save project fail:", err);
     msgEl.textContent = "保存失败：" + (err.message||"") + "，稍后再试";
   }
+}
+function showPlanToast(msg){
+  const el = $("planToast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  clearTimeout(showPlanToast._t);
+  showPlanToast._t = setTimeout(()=>el.classList.add("hidden"), 2600);
 }
 
 /* 搭搭智能识别：一段自然语言 -> 当前项目的周计划/动作明细 */
