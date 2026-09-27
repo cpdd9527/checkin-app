@@ -373,37 +373,50 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 <div class="panel-mask hidden" id="planPanel">
   <div class="panel plan-panel">
     <h3>打卡项目与周计划 <span class="x" onclick="closePlanPanel()">✕</span></h3>
-    <div class="plan-sec-title">打卡项目（点打卡时要选的）</div>
-    <div id="planProjList"></div>
-    <div class="manage-line">
-      <input id="planNewProj" placeholder="添加新项目，如：喝水 / 背单词" onkeydown="if(event.key==='Enter')planAddProject()">
-      <button onclick="planAddProject()">＋添加</button>
+
+    <!-- 视图1：项目列表 -->
+    <div id="planProjListBox">
+      <div class="plan-sec-title">打卡项目</div>
+      <div id="planProjList"></div>
+      <button class="btn ghost" onclick="planNewProject()">＋ 添加项目</button>
     </div>
 
-    <div class="plan-sec-title">周一到周日课表（以「锻炼」项目为例）</div>
-    <div id="planWeekList"></div>
-    <div id="planDayEditBox" class="hidden">
-      <div style="display:flex;align-items:center;gap:8px;margin:6px 0 10px">
-        <button class="mini-btn" onclick="planBackToWeek()">← 返回课表</button>
-        <b id="planDayNameLbl" style="font-size:13px"></b>
+    <!-- 视图2：编辑某个项目 -->
+    <div id="planEditBox" class="hidden">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <button class="mini-btn" onclick="planExitEdit()">← 返回项目</button>
+        <b style="font-size:13.5px">编辑项目</b>
       </div>
-      <div class="field"><label>当天计划名称（如：推日 / 拉日 / 休息 / 学习）</label><input id="planDayName" placeholder="推日"></div>
-      <div style="font-size:12.5px;color:var(--sub);margin:4px 0 6px">动作明细：</div>
-      <div id="planDayActions"></div>
-      <div class="act-add-line">
-        <input id="actName" placeholder="动作，如：仰卧起坐">
-        <input id="actSets" type="number" min="1" placeholder="组数" style="width:60px">
-        <input id="actReps" placeholder="每几个" style="width:68px">
-        <button class="mini-btn" onclick="planAddAction()">＋添加</button>
-      </div>
-      <button class="btn" onclick="planSaveDay()">保存这一天</button>
-      <div class="auth-msg" id="planDayMsg"></div>
-    </div>
+      <div class="field"><label>项目名称（点打卡时要选的）</label><input id="planEditName" placeholder="如：锻炼 / 学习 / 喝水"></div>
 
-    <div class="plan-sec-title">让搭搭帮你设置（一段话搞定）</div>
-    <textarea id="planAiText" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--txt);font-size:14px;outline:none;resize:vertical" placeholder="例如：周一推日：仰卧起坐3组15个、俯卧撑4组12个；周三拉日：坐姿划船4组10个、面拉3组15个；周日休息"></textarea>
-    <button class="btn" onclick="aiParsePlan()">🤖 让搭搭识别并保存</button>
-    <div class="auth-msg" id="planAiMsg"></div>
+      <div class="plan-sec-title">周一到周日课表（这个项目的安排）</div>
+      <div id="planWeekList"></div>
+      <div id="planDayEditBox" class="hidden">
+        <div style="display:flex;align-items:center;gap:8px;margin:6px 0 10px">
+          <button class="mini-btn" onclick="planBackToWeek()">← 返回课表</button>
+          <b id="planDayNameLbl" style="font-size:13px"></b>
+        </div>
+        <div class="field"><label>当天计划名称（如：推日 / 拉日 / 休息 / 学习）</label><input id="planDayName" placeholder="推日"></div>
+        <div style="font-size:12.5px;color:var(--sub);margin:4px 0 6px">动作明细：</div>
+        <div id="planDayActions"></div>
+        <div class="act-add-line">
+          <input id="actName" placeholder="动作，如：仰卧起坐">
+          <input id="actSets" type="number" min="1" placeholder="组数" style="width:60px">
+          <input id="actReps" placeholder="每几个" style="width:68px">
+          <button class="mini-btn" onclick="planAddAction()">＋添加</button>
+        </div>
+        <button class="mini-btn" onclick="planBackToWeek()" style="width:100%;margin-top:2px">完成这天的动作</button>
+        <div class="auth-msg" id="planDayMsg"></div>
+      </div>
+
+      <div class="plan-sec-title">让搭搭帮你设置（一段话搞定）</div>
+      <textarea id="planAiText" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--txt);font-size:14px;outline:none;resize:vertical" placeholder="例如：周一推日：仰卧起坐3组15个、俯卧撑4组12个；周三拉日：坐姿划船4组10个、面拉3组15个；周日休息"></textarea>
+      <button class="btn" onclick="aiParsePlan()">🤖 搭搭识别到当前项目</button>
+      <div class="auth-msg" id="planAiMsg"></div>
+
+      <button class="btn" onclick="planSaveProject()">💾 保存</button>
+      <div class="auth-msg" id="planEditMsg"></div>
+    </div>
   </div>
 </div>
 
@@ -458,7 +471,8 @@ const WEEK_KEYS=[null,"push","run",null,"pull","legs",null,null];
 const PLAN_NAME={push:"推日",run:"间歇跑",pull:"拉日",legs:"腿日"};
 function todayPlan(){
   const dow = new Date().getDay();
-  const wp = weeklyPlan[dow];
+  const proj = myProjects.find(p=>p.name==="锻炼");
+  const wp = proj && plansByProj[proj.id] ? plansByProj[proj.id][dow] : null;
   if(wp && wp.title) return { key:"custom", name: wp.title, actions: wp.actions || [] };
   const k = WEEK_KEYS[dow];
   return k ? { key:k, name:PLAN_NAME[k], actions:null } : null;
@@ -600,7 +614,7 @@ async function loadApp(){
   $("topDate").textContent = fmtCN(todayStr());
   if(me.role==="admin") $("adminBtn").classList.remove("hidden");
   await loadProjects();
-  await loadWeeklyPlan();
+  await loadAllPlans();
   await bootChat();
 }
 
@@ -688,44 +702,37 @@ function closePanel(){ $("projPanel").classList.add("hidden"); }
 function closePlanPanel(){ $("planPanel").classList.add("hidden"); }
 
 /* ================= 项目管理 + 周计划 ================= */
-let weeklyPlan = {};      // {dow:{title, actions:[...]}}
-let planEditDow = null;   // 正在编辑的星期几
+let plansByProj = {};    // {projectId:{dow:{title, actions:[{id,name,sets,reps}]}}}
+let editProj = null;     // 正在编辑的项目 {id, name, week:{dow:{title,actions}}}
+let planEditDow = null;  // 正在编辑的星期几
 
-async function loadWeeklyPlan(){
-  weeklyPlan = {};
-  const proj = myProjects.find(p=>p.name==="锻炼");
-  if(!proj) return;
+async function loadAllPlans(){
+  plansByProj = {};
   try{
     const [wpRes, actRes] = await Promise.all([
-      sb.from("weekly_plan").select("*").eq("user_id", me.id).eq("project_id", proj.id),
-      sb.from("plan_actions").select("*").eq("user_id", me.id).eq("project_id", proj.id).order("sort")
+      sb.from("weekly_plan").select("*").eq("user_id", me.id),
+      sb.from("plan_actions").select("*").eq("user_id", me.id).order("sort")
     ]);
-    for(const r of (wpRes.data||[])) weeklyPlan[r.dow] = { title: r.title||"", actions: [] };
+    for(const r of (wpRes.data||[])){
+      (plansByProj[r.project_id] = plansByProj[r.project_id] || {})[r.dow] = { title: r.title||"", actions: [] };
+    }
     for(const a of (actRes.data||[])){
-      (weeklyPlan[a.dow] = weeklyPlan[a.dow] || { title:"", actions:[] }).actions.push(a);
+      const wk = plansByProj[a.project_id] || (plansByProj[a.project_id] = {});
+      (wk[a.dow] = wk[a.dow] || { title:"", actions:[] }).actions.push(a);
     }
   }catch(e){ /* 读不到就用默认课表兜底 */ }
 }
-function planProj(){ return myProjects.find(p=>p.name==="锻炼"); }
 
 async function openPlanPanel(){
   $("planPanel").classList.remove("hidden");
-  renderPlanPanel();
-}
-function renderPlanPanel(){
-  renderPlanProjList();
-  planEditDow = null;
-  $("planDayEditBox").classList.add("hidden");
-  $("planWeekList").classList.remove("hidden");
-  $("planAiMsg").textContent="";
-  renderPlanWeekList();
+  planExitEdit();
 }
 
 function renderPlanProjList(){
   const box = $("planProjList");
   box.innerHTML = "";
   if(!myProjects.length){
-    box.innerHTML = '<div style="font-size:13px;color:var(--sub)">还没有项目，下面添加一个</div>';
+    box.innerHTML = '<div style="font-size:13px;color:var(--sub)">还没有项目，点下面添加一个</div>';
     return;
   }
   for(const p of myProjects){
@@ -733,29 +740,66 @@ function renderPlanProjList(){
     row.className = "plan-proj-row";
     const nm = document.createElement("div");
     nm.className = "nm";
-    nm.textContent = (p.emoji||"✅") + " " + p.name + (p.name==="锻炼" ? "（周课表用这个项目）" : "");
-    const rn = document.createElement("button"); rn.className="mini-btn"; rn.textContent="改名";
-    rn.onclick = ()=>renameProject(p.id);
+    const wk = plansByProj[p.id] || {};
+    const setDays = Object.keys(wk).filter(d=>wk[d] && wk[d].title).length;
+    nm.textContent = (p.emoji||"✅") + " " + p.name + (setDays ? " · 已设"+setDays+"天课表" : " · 未设课表");
+    const md = document.createElement("button"); md.className="mini-btn"; md.textContent="修改";
+    md.onclick = ()=>planModifyProject(p);
     const del = document.createElement("button"); del.className="mini-btn danger"; del.textContent="删除";
     del.onclick = ()=>delProject(p.id);
-    row.appendChild(nm); row.appendChild(rn); row.appendChild(del);
+    row.appendChild(nm); row.appendChild(md); row.appendChild(del);
     box.appendChild(row);
   }
 }
 
+/* 进入项目编辑页 */
+function planModifyProject(p){
+  editProj = {
+    id: p.id,
+    name: p.name,
+    week: JSON.parse(JSON.stringify(plansByProj[p.id] || {}))
+  };
+  planEditDow = null;
+  $("planProjListBox").classList.add("hidden");
+  $("planEditBox").classList.remove("hidden");
+  $("planEditName").value = editProj.name;
+  $("planDayEditBox").classList.add("hidden");
+  $("planWeekList").classList.remove("hidden");
+  $("planEditMsg").textContent = "";
+  $("planAiMsg").textContent = "";
+  $("planAiText").value = "";
+  renderPlanWeekList();
+}
+function planNewProject(){
+  editProj = { id: null, name: "", week: {} };
+  planEditDow = null;
+  $("planProjListBox").classList.add("hidden");
+  $("planEditBox").classList.remove("hidden");
+  $("planEditName").value = "";
+  $("planDayEditBox").classList.add("hidden");
+  $("planWeekList").classList.remove("hidden");
+  $("planEditMsg").textContent = "";
+  $("planAiMsg").textContent = "";
+  $("planAiText").value = "";
+  renderPlanWeekList();
+}
+function planExitEdit(){
+  editProj = null;
+  planEditDow = null;
+  $("planEditBox").classList.add("hidden");
+  $("planProjListBox").classList.remove("hidden");
+  renderPlanProjList();
+}
+
 function renderPlanWeekList(){
   const box = $("planWeekList");
-  const proj = planProj();
-  if(!proj){
-    box.innerHTML = '<div style="font-size:13px;color:var(--sub)">还没有「锻炼」项目，先在上面添加</div>';
-    return;
-  }
+  if(!editProj){ box.innerHTML=""; return; }
   box.innerHTML = "";
   for(let d=1; d<=6; d++) box.appendChild(weekRow(d));
   box.appendChild(weekRow(0));
 }
 function weekRow(d){
-  const wp = weeklyPlan[d];
+  const wp = editProj.week[d];
   const row = document.createElement("div");
   row.className = "plan-week-row";
   const dow = document.createElement("div"); dow.className="plan-dow"; dow.textContent="周"+WEEK_CN[d];
@@ -774,7 +818,7 @@ function weekRow(d){
 function planEditDay(d){
   planEditDow = d;
   $("planDayNameLbl").textContent = "周" + WEEK_CN[d] + "的计划";
-  const wp = weeklyPlan[d] || { title:"", actions:[] };
+  const wp = editProj.week[d] || { title:"", actions:[] };
   $("planDayName").value = wp.title || "";
   renderDayActions(wp.actions || []);
   $("planWeekList").classList.add("hidden");
@@ -782,6 +826,11 @@ function planEditDay(d){
   $("planDayMsg").textContent="";
 }
 function planBackToWeek(){
+  const title = $("planDayName").value.trim();
+  if(title && planEditDow!==null){
+    editProj.week[planEditDow] = editProj.week[planEditDow] || { title:"", actions:[] };
+    editProj.week[planEditDow].title = title;
+  }
   planEditDow = null;
   $("planDayEditBox").classList.add("hidden");
   $("planWeekList").classList.remove("hidden");
@@ -802,67 +851,87 @@ function renderDayActions(actions){
     const spec = document.createElement("span"); spec.className="spec";
     spec.textContent = (a.sets ? a.sets+"组" : "") + (a.reps ? "×"+a.reps+"个" : "");
     const del = document.createElement("button"); del.className="mini-btn danger"; del.textContent="删";
-    del.onclick = async ()=>{
-      await sb.from("plan_actions").delete().eq("id", a.id);
-      await loadWeeklyPlan();
-      planEditDay(planEditDow);
+    del.onclick = ()=>{
+      actions.splice(i,1);
+      renderDayActions(actions);
     };
     row.appendChild(idx); row.appendChild(nm); row.appendChild(spec); row.appendChild(del);
     box.appendChild(row);
   });
 }
-async function planAddAction(){
+function planAddAction(){
   if(planEditDow===null) return;
   const name=$("actName").value.trim(), sets=parseInt($("actSets").value,10), reps=$("actReps").value.trim();
   if(!name){ $("planDayMsg").textContent="先填动作名"; return; }
-  const proj = planProj(); if(!proj) return;
-  const cur = (weeklyPlan[planEditDow] && weeklyPlan[planEditDow].actions) || [];
-  const { error } = await sb.from("plan_actions").insert({
-    user_id: me.id, project_id: proj.id, dow: planEditDow,
-    name, sets: isNaN(sets)?null:sets, reps: reps||null, sort: cur.length
-  });
-  if(error){ $("planDayMsg").textContent="保存失败，稍后再试"; return; }
+  editProj.week[planEditDow] = editProj.week[planEditDow] || { title:"", actions:[] };
+  editProj.week[planEditDow].actions.push({ name, sets: isNaN(sets)?null:sets, reps: reps||null });
   $("actName").value=""; $("actSets").value=""; $("actReps").value="";
-  await loadWeeklyPlan();
-  planEditDay(planEditDow);
-}
-async function planSaveDay(){
-  if(planEditDow===null) return;
-  const title = $("planDayName").value.trim();
-  if(!title){ $("planDayMsg").textContent="填一个当天名称（如：推日 / 休息）"; return; }
-  const proj = planProj(); if(!proj) return;
-  const { error } = await sb.from("weekly_plan").upsert(
-    { user_id: me.id, project_id: proj.id, dow: planEditDow, title },
-    { onConflict: "user_id,dow,project_id" }
-  );
-  if(error){ $("planDayMsg").textContent="保存失败，稍后再试"; return; }
-  await loadWeeklyPlan();
-  planBackToWeek();
-}
-async function planAddProject(){
-  const name=$("planNewProj").value.trim();
-  if(!name) return;
-  const emojis=["✅","💪","📚","🏃","🧘","💧","🎯","✍️","🌙","🛌"];
-  const { error } = await sb.from("projects").insert({ user_id: me.id, name, emoji: emojis[myProjects.length%emojis.length], sort: myProjects.length+1 });
-  if(error){
-    if(error.message && error.message.indexOf("duplicate")>=0) alert("已经有同名项目了，换一个");
-    return;
-  }
-  $("planNewProj").value="";
-  await loadProjects();
-  renderPlanPanel();
+  renderDayActions(editProj.week[planEditDow].actions);
 }
 
-/* 搭搭智能识别：一段自然语言 -> 周计划/动作明细 */
+/* 保存整个项目（名称 + 周课表 + 动作明细） */
+async function planSaveProject(){
+  const msgEl = $("planEditMsg");
+  if(!editProj) return;
+  const name = $("planEditName").value.trim();
+  if(!name){ msgEl.textContent="先填项目名称"; return; }
+  let pid = editProj.id;
+  try{
+    if(pid){
+      const { error } = await sb.from("projects").update({ name }).eq("id", pid);
+      if(error){
+        if(error.message && error.message.indexOf("duplicate")>=0){ msgEl.textContent="已经有同名项目了，换一个"; return; }
+        throw error;
+      }
+    } else {
+      const emojis=["✅","💪","📚","🏃","🧘","💧","🎯","✍️","🌙","🛌"];
+      const { data, error } = await sb.from("projects").insert({ user_id: me.id, name, emoji: emojis[myProjects.length%emojis.length], sort: myProjects.length+1 }).select();
+      if(error){
+        if(error.message && error.message.indexOf("duplicate")>=0){ msgEl.textContent="已经有同名项目了，换一个"; return; }
+        throw error;
+      }
+      pid = data[0].id;
+    }
+    // 清掉该项目旧课表，写入新的
+    await sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", pid);
+    await sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", pid);
+    for(const dow in editProj.week){
+      const item = editProj.week[dow];
+      if(!item || !item.title) continue;
+      const d = parseInt(dow,10);
+      await sb.from("weekly_plan").insert({ user_id: me.id, project_id: pid, dow: d, title: item.title });
+      const acts = item.actions || [];
+      for(let i=0;i<acts.length;i++){
+        await sb.from("plan_actions").insert({ user_id: me.id, project_id: pid, dow: d, name: acts[i].name, sets: acts[i].sets||null, reps: acts[i].reps||null, sort: i });
+      }
+    }
+    await loadProjects();
+    await loadAllPlans();
+    if(!editProj.id){
+      msgEl.classList.add("ok");
+      msgEl.textContent = "✅ 已创建「"+name+"」";
+      planExitEdit();
+      return;
+    }
+    editProj.id = pid; editProj.name = name;
+    msgEl.classList.add("ok");
+    msgEl.textContent = "✅ 已保存「"+name+"」，课表 "+Object.keys(editProj.week).filter(d=>editProj.week[d].title).length+" 天";
+    renderPlanProjList();
+  }catch(err){
+    console.error("save project fail:", err);
+    msgEl.textContent = "保存失败：" + (err.message||"") + "，稍后再试";
+  }
+}
+
+/* 搭搭智能识别：一段自然语言 -> 当前项目的周计划/动作明细 */
 const AI_PARSE_SYSTEM = "你是打卡计划解析器。用户会输入一段中文的训练/学习计划文字，你要把它提取成结构化的 JSON。只输出一个 JSON 对象，不要输出任何其他文字、解释或 markdown 代码块。JSON 格式：{\"plan\":[{\"dow\":1,\"title\":\"推日\",\"actions\":[{\"name\":\"仰卧起坐\",\"sets\":3,\"reps\":\"15\"},{\"name\":\"俯卧撑\",\"sets\":4,\"reps\":\"12\"}]}]}。规则：dow 是星期几，0=周日、1=周一、2=周二、3=周三、4=周四、5=周五、6=周六，只能填 0-6；title 是当天计划名称（如 推日/拉日/腿日/间歇跑/休息/学习），没写就填\"未设置\"；actions 是动作数组，name=动作名，sets=组数（没写组数填 null），reps=次数文字（如\"15\"、\"每侧15个\"、\"10分钟\"，没写填 null）；用户说某天\"休息/不练/休息日\"时，该天 actions 给空数组 [ ]，title 填\"休息\"；没有提到的日期不要出现在 plan 里；如果完全没有识别到任何日期，输出 {\"plan\":[]}。";
 async function aiParsePlan(){
   const text = $("planAiText").value.trim();
   const msgEl = $("planAiMsg");
   if(!text){ msgEl.textContent="先输入你的计划文字（比如：周一推日，仰卧起坐3组15个）"; return; }
-  const proj = planProj();
-  if(!proj){ msgEl.textContent="请先创建一个名为「锻炼」的打卡项目"; return; }
+  if(!editProj){ msgEl.textContent="先进入一个项目的编辑页，再让搭搭识别"; return; }
   msgEl.classList.remove("ok");
-  msgEl.textContent = "搭搭正在识别你的计划…";
+  msgEl.textContent = "搭搭正在识别…";
   try{
     const { data, error } = await sb.functions.invoke("chat-ai", {
       body: { messages:[{ role:"user", content:text }], system: AI_PARSE_SYSTEM }
@@ -876,45 +945,28 @@ async function aiParsePlan(){
     const planArr = (json.plan||[]).filter(x=>Number.isInteger(x.dow) && x.dow>=0 && x.dow<=6);
     if(!planArr.length) throw new Error("没有识别到具体日期");
     for(const item of planArr){
-      const title = (item.title||"").trim() || "未设置";
-      await sb.from("weekly_plan").upsert({ user_id:me.id, project_id:proj.id, dow:item.dow, title }, { onConflict:"user_id,dow,project_id" });
-      await sb.from("plan_actions").delete().eq("user_id",me.id).eq("project_id",proj.id).eq("dow",item.dow);
-      const acts = (item.actions||[]).filter(a=>a && a.name);
-      for(let i=0;i<acts.length;i++){
-        await sb.from("plan_actions").insert({ user_id:me.id, project_id:proj.id, dow:item.dow, name:acts[i].name, sets:acts[i].sets||null, reps:acts[i].reps||null, sort:i });
-      }
+      editProj.week[item.dow] = {
+        title: (item.title||"").trim() || "未设置",
+        actions: (item.actions||[]).filter(a=>a && a.name).map(a=>({ name:a.name, sets:a.sets||null, reps:a.reps||null }))
+      };
     }
-    await loadWeeklyPlan();
-    renderPlanPanel();
+    planBackToWeek();
     msgEl.classList.add("ok");
-    msgEl.textContent = "✅ 已设置 " + planArr.length + " 天的计划！搭搭以后会按这个课表回答你";
+    msgEl.textContent = "✅ 识别出 " + planArr.length + " 天的安排，记得点下面「💾 保存」才生效";
   }catch(err){
     console.error("plan parse fail:", err);
-    msgEl.textContent = "识别失败：" + (err.message||"") + "。可以试着写简单点，或手动点「编辑」逐天设置";
+    msgEl.textContent = "识别失败：" + (err.message||"") + "。可以写简单点，或手动点「编辑」逐天设置";
   }
 }
 
-async function renameProject(pid){
-  const p = myProjects.find(x=>x.id===pid);
-  if(!p) return;
-  const nn = prompt("给「"+p.name+"」改个新名字：", p.name);
-  if(!nn || !nn.trim() || nn.trim()===p.name) return;
-  const { error } = await sb.from("projects").update({ name: nn.trim() }).eq("id", pid);
-  if(error){
-    if(error.message && error.message.indexOf("duplicate")>=0) alert("已经有同名项目了，换一个");
-    else alert("改名失败，稍后再试");
-    return;
-  }
-  await loadProjects();
-  if(!$("planPanel").classList.contains("hidden")) renderPlanPanel(); else openProjectPanel();
-}
 async function delProject(pid){
   const p = myProjects.find(x=>x.id===pid);
   if(!p) return;
   if(!confirm("删除「"+p.name+"」？\n它的全部打卡记录也会一起删掉，无法恢复。")) return;
   await sb.from("projects").delete().eq("id", pid);
+  delete plansByProj[pid];
   await loadProjects();
-  if(!$("planPanel").classList.contains("hidden")) renderPlanPanel(); else openProjectPanel();
+  if(!$("planPanel").classList.contains("hidden")) renderPlanProjList(); else openProjectPanel();
 }
 
 function startCheckin(pid){
@@ -1227,6 +1279,22 @@ function chatHistory(cur){
   out.push({ role: "user", content: cur });
   return out;
 }
+function planSummaryForAI(){
+  const lines = [];
+  for(const p of myProjects){
+    const wk = plansByProj[p.id];
+    if(!wk) continue;
+    const setDays = Object.keys(wk).filter(d=>wk[d] && wk[d].title);
+    if(!setDays.length) continue;
+    const parts = setDays.map(d=>{
+      const item = wk[d];
+      const acts = (item.actions && item.actions.length) ? "（"+item.actions.map(a=>a.name+(a.sets?` ${a.sets}组×`:"")+(a.reps?a.reps+"个":"")).join("、")+"）" : "";
+      return "周"+WEEK_CN[+d]+" "+item.title+acts;
+    });
+    lines.push(p.name+"："+parts.join("；"));
+  }
+  return lines.join("\n");
+}
 function aiSystem(){
   const w = (me && me.nickname) || "朋友";
   const dow = new Date().getDay();
@@ -1242,8 +1310,10 @@ function aiSystem(){
   } else {
     planInfo += "，今天是休息日";
   }
+  const userPlans = planSummaryForAI();
   let s = "你是「搭搭」，一个说话亲切、带点幽默、以鼓励为主的AI伙伴。你的名字叫搭搭，用户叫你「搭搭」「搭搭，……」「搭搭，帮我……」「搭搭在吗」这类话时，要用搭搭的身份热情接话，用名字回应，例如「在呢！……」或「搭搭来了！……」。用户叫" + w + "。" +
           planInfo + "。" +
+          (userPlans ? "【用户自定义课表】\n" + userPlans + "\n（用户问某个项目的安排时，按该项目课表回答，没有设置的那天不要编造动作）\n" : "") +
           "【用户最近7天真实打卡记录】\n" + (aiCtxCache || "（暂无）") + "\n" +
           "规则：① 用户问「昨天练了什么」「最近打卡了啥」「我打卡情况怎么样」等涉及打卡记录的问题时，必须以上面的真实打卡记录为准如实回答，记录里没有的就是没有，绝对不能编造；② 用户问「今天/该练什么」「练哪个动作」「一组多少」时，结合今天的课表和动作明细给出具体动作和组数建议；③ 用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。除了这种情况，其他时候绝对不要输出这个标记。" +
           "回复要口语化、简短（两三句内）、像朋友聊天，多鼓励，少说教。可以适当调侃用户偷懒。";
