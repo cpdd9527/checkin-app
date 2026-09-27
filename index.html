@@ -1039,7 +1039,12 @@ async function bootChat(){
   const y=new Date(); y.setDate(y.getDate()-1);
   const ystr=todayStr(y);
   const todayCount = myProjects.reduce((s,p)=>s+(p.today||0),0);
-  let msg = "";
+
+  // 每天每个账号只播一次开场白（跨设备同步：记在数据库）
+  if(me.last_greet_date === t){
+    renderDailyTips();
+    return;
+  }
 
   // 昨天的账
   const { data: yc } = await sb.from("checkins").select("project_id, meta").eq("user_id", me.id).eq("date", ystr);
@@ -1050,28 +1055,66 @@ async function bootChat(){
   if(!workOutToday) yMiss.push("锻炼");
   if(!studyToday) yMiss.push("学习");
 
-  const greets=["早","晚上好","嗨","来了啊","哟"];
-  msg = `${greets[Math.floor(Math.random()*greets.length)]}，${w}${todayCount>0?`，今天已经打卡 ${todayCount} 次，可以啊🔥`:"！"}\n`;
+  const pick = a=>a[Math.floor(Math.random()*a.length)];
+  // 开场问候（多语气模板，随机切换）
+  const greetTpl = [
+    tc => tc>0 ? `嗨，${w}！今天已经打卡 ${tc} 次了，可以啊🔥` : `嗨，${w}！今天还没打卡呢，我等着你呢`,
+    tc => `哟，${w}来啦～${tc>0?`今天状态不错嘛，都整了 ${tc} 次了`:"今天的第一张卡，想好打哪个了吗？"}`,
+    tc => `${w}来了！${tc>0?`我看一眼记录：今天 ${tc} 次打卡，挺自律的嘛`:"新的一天，从一张打卡开始吧，动一动"}`,
+    tc => `${w}，我掐指一算${tc>0?`你今天已经干了 ${tc} 次，稳得一批`:"你今天还没打卡，这账我可记下了😏"}`,
+    tc => `嘿嘿，${w}终于来了！${tc>0?`今天的打卡数 ${tc} 次，漂亮`:"今天的第一笔打卡就等你了，快"}`,
+    tc => `哦？${w}！${tc>0?`今天收获不小，${tc} 次都整上了`:"今天还没动静？要不现在来一张？"}`,
+  ];
+  let msg = pick(greetTpl)(todayCount) + "\n";
   if(histCount===0){
     msg = `嗨，${w}！先认识一下：我是搭搭，你的打卡搭子——负责盯你锻炼、陪你学习、夸你两句、偶尔损你一嘴。从今天起咱们就搭伙了，打卡或者直接跟我聊天都行！\n\n` + msg;
   }
+  // 昨天的账（语气随机）
   if(yMiss.length){
-    msg += `先算个账：昨天「${yMiss.join("、")}」你可是空着的😏\n今天补上，别让我再念叨了。\n`;
+    const missTpl = [
+      names => `先算个账：昨天「${names}」你可是空着的😏 今天补上，别让我再念叨了。`,
+      names => `咳咳，提醒一下：昨天的「${names}」还没打卡，我先记小本本上了，今天记得补回来。`,
+      names => `昨天「${names}」缺了席，我不批评你，但今天得补上哦💪`,
+    ];
+    msg += pick(missTpl)(yMiss.join("、")) + "\n";
   } else {
-    msg += `昨天锻炼、学习都齐了，继续保持这个节奏👏\n`;
+    const fullTpl = [
+      () => `昨天锻炼、学习都齐了，继续保持这个节奏👏`,
+      () => `昨天两项全勤，我就喜欢这种稳的人`,
+      () => `昨天的账结清了，干得漂亮，今天继续`,
+    ];
+    msg += pick(fullTpl)() + "\n";
   }
+  // 今日课表（语气随机）
   if(plan.key){
-    msg += `今天${plan.name}。课表上写着呢，别偷懒💪`;
+    const planTpl = [
+      name => `今天${name}。课表上写着呢，别偷懒💪`,
+      name => `今天的安排是${name}，动起来就完事了`,
+      name => `今日课表：${name}。别让我发现你在划水😏`,
+    ];
+    msg += pick(planTpl)(plan.name);
   } else {
-    msg += `今天休息日，好好恢复，明天再战🌙`;
+    const restTpl = [
+      () => `今天休息日，好好恢复，明天再战🌙`,
+      () => `今天没课，放松一下，明天满血复活`,
+      () => `今天休息，养精蓄锐，别乱卷`,
+    ];
+    msg += pick(restTpl)();
   }
   const debts = await computeDebts();
   if(debts.length){
-    msg += `\n\n对了，这周还欠着：${debts.map(d=>`周${WEEK_CN[d.dow]}的${d.name}`).join("、")}。可以后移补上，但别赖账😏`;
+    const debtTpl = [
+      s => `\n\n对了，这周还欠着：${s}。可以后移补上，但别赖账😏`,
+      s => `\n\n另外这周还有欠账：${s}，找个时间补上哦`,
+    ];
+    msg += pick(debtTpl)(debts.map(d=>`周${WEEK_CN[d.dow]}的${d.name}`).join("、"));
   }
   msg += histCount ? `\n\n（上面是之前的聊天，点「📅 历史」可以按日期回看）` : "";
   addMsg(msg,"ai");
   renderDailyTips();
+  // 标记今天已播过开场白
+  me.last_greet_date = t;
+  await sb.from("profiles").update({ last_greet_date: t }).eq("id", me.id);
 }
 
 async function renderDailyTips(){
