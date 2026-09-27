@@ -701,7 +701,18 @@ function openProjectPanel(){
   $("projPanel").classList.remove("hidden");
 }
 function closePanel(){ $("projPanel").classList.add("hidden"); }
-function closePlanPanel(){ $("planPanel").classList.add("hidden"); $("planToast").classList.add("hidden"); }
+async function closePlanPanel(){
+  if(editProj && planDirty()){
+    if(confirm("有改动还没保存：\n「确定」= 保存后再关闭\n「取消」= 不保存直接关闭")){
+      const ok = await planSaveProject();
+      if(!ok) return;   // 保存失败，不关闭面板
+    } else {
+      planExitEditNow();
+    }
+  }
+  $("planPanel").classList.add("hidden");
+  $("planToast").classList.add("hidden");
+}
 
 /* ================= 项目管理 + 周计划 ================= */
 let plansByProj = {};    // {projectId:{dow:{title, actions:[{id,name,sets,reps}]}}}
@@ -727,7 +738,7 @@ async function loadAllPlans(){
 
 async function openPlanPanel(){
   $("planPanel").classList.remove("hidden");
-  planExitEdit();
+  planExitEditNow();
 }
 
 function renderPlanProjList(){
@@ -761,6 +772,7 @@ function planModifyProject(p){
     name: p.name,
     week: JSON.parse(JSON.stringify(plansByProj[p.id] || {}))
   };
+  editProj._orig = JSON.parse(JSON.stringify({ name: editProj.name, week: editProj.week }));
   planEditDow = null;
   $("planProjListBox").classList.add("hidden");
   $("planEditBox").classList.remove("hidden");
@@ -774,6 +786,7 @@ function planModifyProject(p){
 }
 function planNewProject(){
   editProj = { id: null, name: "", week: {} };
+  editProj._orig = { name: "", week: {} };
   planEditDow = null;
   $("planProjListBox").classList.add("hidden");
   $("planEditBox").classList.remove("hidden");
@@ -785,12 +798,37 @@ function planNewProject(){
   $("planAiText").value = "";
   renderPlanWeekList();
 }
-function planExitEdit(){
+/* 是否有未保存的改动（名称、当天标题输入、课表/动作内存态） */
+function planDirty(){
+  if(!editProj) return false;
+  if($("planEditName").value.trim() !== (editProj._orig && editProj._orig.name || "")) return true;
+  if(planEditDow!==null){
+    const wp = editProj.week[planEditDow];
+    const v = $("planDayName").value.trim();
+    if(v !== ((wp && wp.title) || "")) return true;
+  }
+  if(JSON.stringify(editProj.week) !== JSON.stringify((editProj._orig && editProj._orig.week) || {})) return true;
+  return false;
+}
+/* 无条件退出编辑 */
+function planExitEditNow(){
   editProj = null;
   planEditDow = null;
   $("planEditBox").classList.add("hidden");
   $("planProjListBox").classList.remove("hidden");
   renderPlanProjList();
+}
+/* 带未保存确认的退出：点「← 返回项目」时走这里 */
+async function planExitEdit(){
+  if(!editProj){ planExitEditNow(); return; }
+  if(planDirty()){
+    if(confirm("有改动还没保存：\n「确定」= 保存后再退出\n「取消」= 不保存直接退出")){
+      const ok = await planSaveProject();
+      if(!ok) return;   // 保存失败/没填名称，留在编辑页
+      return;           // 保存成功已内部退出
+    }
+  }
+  planExitEditNow();
 }
 
 function renderPlanWeekList(){
@@ -876,20 +914,20 @@ async function planSaveProject(){
   const msgEl = $("planEditMsg");
   if(!editProj) return;
   const name = $("planEditName").value.trim();
-  if(!name){ msgEl.textContent="先填项目名称"; return; }
+  if(!name){ msgEl.textContent="先填项目名称"; return false; }
   let pid = editProj.id;
   try{
     if(pid){
       const { error } = await sb.from("projects").update({ name }).eq("id", pid);
       if(error){
-        if(error.message && error.message.indexOf("duplicate")>=0){ msgEl.textContent="已经有同名项目了，换一个"; return; }
+        if(error.message && error.message.indexOf("duplicate")>=0){ msgEl.textContent="已经有同名项目了，换一个"; return false; }
         throw error;
       }
     } else {
       const emojis=["✅","💪","📚","🏃","🧘","💧","🎯","✍️","🌙","🛌"];
       const { data, error } = await sb.from("projects").insert({ user_id: me.id, name, emoji: emojis[myProjects.length%emojis.length], sort: myProjects.length+1 }).select();
       if(error){
-        if(error.message && error.message.indexOf("duplicate")>=0){ msgEl.textContent="已经有同名项目了，换一个"; return; }
+        if(error.message && error.message.indexOf("duplicate")>=0){ msgEl.textContent="已经有同名项目了，换一个"; return false; }
         throw error;
       }
       pid = data[0].id;
@@ -910,11 +948,13 @@ async function planSaveProject(){
     await loadProjects();
     await loadAllPlans();
     const days = Object.keys(editProj.week).filter(d=>editProj.week[d].title).length;
-    planExitEdit();
+    planExitEditNow();
     showPlanToast("✅ 已保存「"+name+"」" + (days ? "，课表 "+days+" 天" : ""));
+    return true;
   }catch(err){
     console.error("save project fail:", err);
     msgEl.textContent = "保存失败：" + (err.message||"") + "，稍后再试";
+    return false;
   }
 }
 function showPlanToast(msg){
