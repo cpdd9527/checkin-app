@@ -402,6 +402,13 @@ const FIXED_PLAN=[ // 固定课表：0=周日 … 6=周六
   {key:"legs",name:"腿日"},
   {key:null,name:"休息日"},
 ];
+/* 训练日动作明细（组数×次数），搭搭给训练建议时引用；未提供明细的日子不编造 */
+const PLAN_DETAIL={
+  push:"①上斜跪姿俯卧撑 3组×15个 ②拉力绳坐姿推胸 3组×15个 ③臂力棒胸前慢弯 2组×10个 ④拉力绳过头臂屈伸 每侧3组×15个 ⑤死虫式 3组×10个/侧",
+  pull:"①拉力绳坐姿划船 4组×10个 ②拉力绳面拉 3组×15个 ③拉力绳高位下拉 3组×15个 ④拉力绳直臂下压 3组×15个 ⑤死虫式 3组×10个/侧",
+  legs:"按你平时的腿部训练安排来",
+  run:"按你平时的跑步/间歇跑安排来"
+};
 
 /* ================= 认证 ================= */
 function showAuth(v){
@@ -869,6 +876,34 @@ function sendChat(){
 }
 /* 真AI对话：调 Supabase Edge Function -> 智谱大模型；失败自动降级本地话术 */
 let aiBusy = false;
+let aiCtxCache = "";   // 每次对话前刷新：用户最近打卡记录摘要，喂给搭搭
+async function getAiContext(){
+  try{
+    const from = new Date(); from.setDate(from.getDate()-6);
+    const { data } = await sb.from("checkins")
+      .select("date, project_id, meta")
+      .eq("user_id", me.id)
+      .gte("date", todayStr(from))
+      .order("date", { ascending:false })
+      .limit(200);
+    if(!data || !data.length) return "（最近7天暂无打卡记录）";
+    const nameMap = {}; myProjects.forEach(p=>nameMap[p.id]=p.name);
+    const byDate = {};
+    for(const c of data){
+      const nm = nameMap[c.project_id] || "未知项目";
+      const mm = c.meta || {};
+      let extra = "";
+      if(mm.duration_min) extra = `（${mm.duration_min}分钟）`;
+      else if(mm.subject) extra = `（${mm.subject}）`;
+      else if(mm.type) extra = `（${mm.type}）`;
+      (byDate[c.date] = byDate[c.date] || []).push(nm + extra);
+    }
+    return Object.keys(byDate).sort().reverse().slice(0,7)
+      .map(d=>`${d}：${byDate[d].join("、")}`).join("\n");
+  }catch(e){
+    return "（暂时读不到打卡记录）";
+  }
+}
 async function aiChat(t){
   if(aiBusy){ addMsg("稍等，我先把上一句回完~","ai"); return; }
   aiBusy = true;
@@ -876,6 +911,7 @@ async function aiChat(t){
   loading.id = "typingMsg";
   loading.style.opacity = ".75";
   try{
+    aiCtxCache = await getAiContext();
     const hist = chatHistory(t);
     const { data, error } = await sb.functions.invoke("chat-ai", {
       body: { messages: hist, system: aiSystem() }
@@ -914,10 +950,13 @@ function aiSystem(){
   const w = (me && me.nickname) || "朋友";
   const dow = new Date().getDay();
   const plan = FIXED_PLAN[dow];
+  const detail = PLAN_DETAIL[plan.key] || "";
   let s = "你是「搭搭」，一个说话亲切、带点幽默、以鼓励为主的AI伙伴。你的名字叫搭搭，用户叫你「搭搭」「搭搭，……」「搭搭，帮我……」「搭搭在吗」这类话时，要用搭搭的身份热情接话，用名字回应，例如「在呢！……」或「搭搭来了！……」。用户叫" + w + "。" +
-          "今天是周" + WEEK_CN[dow] + "，按固定课表该练「" + plan.name + "」。" +
-          "回复要口语化、简短（两三句内）、像朋友聊天，多鼓励，少说教。可以适当调侃用户偷懒。" +
-          "另外：如果用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。除了这种情况，其他时候绝对不要输出这个标记，也不要改变你正常说话的语气。";
+          "今天是周" + WEEK_CN[dow] + "，按固定课表该练「" + plan.name + "」" +
+          (detail ? "，动作安排：" + detail : "") + "。" +
+          "【用户最近7天真实打卡记录】\n" + (aiCtxCache || "（暂无）") + "\n" +
+          "规则：① 用户问「昨天练了什么」「最近打卡了啥」「我打卡情况怎么样」等涉及打卡记录的问题时，必须以上面的真实打卡记录为准如实回答，记录里没有的就是没有，绝对不能编造；② 用户问「今天/该练什么」「练哪个动作」「一组多少」时，结合今天的课表和动作明细给出具体动作和组数建议；③ 用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。除了这种情况，其他时候绝对不要输出这个标记。" +
+          "回复要口语化、简短（两三句内）、像朋友聊天，多鼓励，少说教。可以适当调侃用户偷懒。";
   return s;
 }
 function localReply(t){
