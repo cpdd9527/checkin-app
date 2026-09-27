@@ -924,38 +924,114 @@ async function planSaveProject(){
 }
 
 /* 搭搭智能识别：一段自然语言 -> 当前项目的周计划/动作明细 */
-const AI_PARSE_SYSTEM = "你是打卡计划解析器。用户会输入一段中文的训练/学习计划文字，你要把它提取成结构化的 JSON。只输出一个 JSON 对象，不要输出任何其他文字、解释或 markdown 代码块。JSON 格式：{\"plan\":[{\"dow\":1,\"title\":\"推日\",\"actions\":[{\"name\":\"仰卧起坐\",\"sets\":3,\"reps\":\"15\"},{\"name\":\"俯卧撑\",\"sets\":4,\"reps\":\"12\"}]}]}。规则：dow 是星期几，0=周日、1=周一、2=周二、3=周三、4=周四、5=周五、6=周六，只能填 0-6；title 是当天计划名称（如 推日/拉日/腿日/间歇跑/休息/学习），没写就填\"未设置\"；actions 是动作数组，name=动作名，sets=组数（没写组数填 null），reps=次数文字（如\"15\"、\"每侧15个\"、\"10分钟\"，没写填 null）；用户说某天\"休息/不练/休息日\"时，该天 actions 给空数组 [ ]，title 填\"休息\"；没有提到的日期不要出现在 plan 里；如果完全没有识别到任何日期，输出 {\"plan\":[]}。";
+/* 第一步走本地规则解析（对"周一 + 动作列表"这种规整文本 100% 可靠），失败再让 AI 兜底 */
+function planParseLocal(text){
+  const dowMap = {日:0, 一:1, 二:2, 三:3, 四:4, 五:5, 六:6};
+  const segs = [];
+  const parts = text.split(/(周[一二三四五六日])/);
+  let cur = null;
+  for(const part of parts){
+    const t = (part||"").trim();
+    if(!t) continue;
+    const dm = t.match(/^周([一二三四五六日])$/);
+    if(dm){ cur = { dow: dowMap[dm[1]], title:"", actions:[], lines:[] }; segs.push(cur); continue; }
+    if(cur) for(const ln of t.split(/\n/)) cur.lines.push(ln);
+  }
+  if(!segs.length) return null;
+  for(const s of segs){
+    // 标题①：第一行是"推日：动作…"这种格式
+    const tRe = (s.lines[0]||"").match(/^([^0-9:：、]{1,8})[:：]/);
+    if(tRe) s.title = tRe[1].trim();
+    // 标题②：第一个不以"动作"开头、不含数字和"组"字、且短的行
+    if(!s.title){
+      for(const ln of s.lines){
+        if(ln.length<=12 && !/动作|[0-9]|组|×|x|X/.test(ln)){
+          s.title = ln.replace(/[:：、]+$/,"").trim();
+          break;
+        }
+      }
+    }
+    // 动作行解析（支持 动作1： / 顿号分隔 / 直接"名称3组×15个" / "名称3组15个"）
+    for(const ln of s.lines){
+      if(ln === s.title) continue;
+      let line = ln;
+      if(s.title && line.indexOf(s.title)===0 && (line[s.title.length]===":" || line[s.title.length]==="：")) line = line.slice(s.title.length+1);
+      const chunks = line.split(/[、，,;；]/);
+      for(let c of chunks){
+        c = c.replace(/^动作\s*\d*\s*[:：.．、]\s*/, "").trim();
+        c = c.replace(/^周[一二三四五六日][^0-9]{0,8}?[:：]\s*/, "").trim();
+        if(!c) continue;
+        const am = c.match(/(.+?)(\d+)\s*组\s*[×xX*]?\s*(\d+)\s*(个|次)?\s*(\/侧|每侧)?/);
+        if(am){
+          s.actions.push({
+            name: am[1].replace(/每侧$/,"").trim(),
+            sets: parseInt(am[2],10),
+            reps: (am[3]||"") + (am[4]||"") + (am[5]||"")
+          });
+        }
+      }
+    }
+    if(!s.title && s.actions.length) s.title = "训练日";
+    if(!s.title) s.title = "未设置";
+  }
+  return segs.filter(s=>s.dow>=0 && s.dow<=6);
+}
+/* AI 返回 JSON 的容错解析 */
+function tryJsonParse(raw){
+  const m = raw.match(/\{[\s\S]*\}/);
+  if(!m) return null;
+  let s = m[0]
+    .replace(/```(json)?/gi,"")
+    .replace(/，/g,",").replace(/：/g,":")
+    .replace(/“|”|「|」/g,'"')
+    .replace(/,\s*}/g,"}").replace(/,\s*]/g,"]");
+  try{ return JSON.parse(s); }catch(e){}
+  s = s.replace(/\/\/[^\n]*/g,"").replace(/'/g,'"');
+  try{ return JSON.parse(s); }catch(e){ return null; }
+}
+const AI_PARSE_SYSTEM = "你是打卡计划解析器。用户会输入一段中文的训练/学习计划文字，你要把它提取成结构化的 JSON。只输出一个 JSON 对象，不要输出任何其他文字、解释或 markdown 代码块。JSON 格式：{\"plan\":[{\"dow\":1,\"title\":\"推日\",\"actions\":[{\"name\":\"仰卧起坐\",\"sets\":3,\"reps\":\"15\"},{\"name\":\"俯卧撑\",\"sets\":4,\"reps\":\"12\"}]}]}。规则：dow 是星期几，0=周日、1=周一、2=周二、3=周三、4=周四、5=周五、6=周六，只能填 0-6；title 是当天计划名称（如 推日/拉日/腿日/间歇跑/休息/学习），没写就填\"训练日\"；actions 是动作数组，name=动作名，sets=组数（没写组数填 null），reps=次数文字（如\"15\"、\"每侧15个\"、\"10分钟\"，没写填 null）；用户说某天\"休息/不练/休息日\"时，该天 actions 给空数组 [ ]，title 填\"休息\"；没有提到的日期不要出现在 plan 里；如果完全没有识别到任何日期，输出 {\"plan\":[]}。请特别注意：输入可能是\"周一\\n动作1：上斜跪姿俯卧撑3组×15个\\n动作2：…\"这种逐行动作列表，要逐行解析到 actions 里。";
+function applyPlanToEdit(planArr){
+  for(const item of planArr){
+    editProj.week[item.dow] = {
+      title: (item.title||"").trim() || "训练日",
+      actions: (item.actions||[]).filter(a=>a && a.name).map(a=>({ name:a.name, sets:a.sets||null, reps:a.reps||null }))
+    };
+  }
+}
 async function aiParsePlan(){
   const text = $("planAiText").value.trim();
   const msgEl = $("planAiMsg");
   if(!text){ msgEl.textContent="先输入你的计划文字（比如：周一推日，仰卧起坐3组15个）"; return; }
   if(!editProj){ msgEl.textContent="先进入一个项目的编辑页，再让搭搭识别"; return; }
   msgEl.classList.remove("ok");
+  // 第一步：本地规则解析（最快最稳）
+  const local = planParseLocal(text);
+  if(local && local.length){
+    applyPlanToEdit(local);
+    planBackToWeek();
+    msgEl.classList.add("ok");
+    const n = local.reduce((s,x)=>s+x.actions.length,0);
+    msgEl.textContent = "✅ 已识别 " + local.length + " 天、" + n + " 个动作，记得点下面「💾 保存」才生效";
+    return;
+  }
+  // 第二步：AI 兜底
   msgEl.textContent = "搭搭正在识别…";
   try{
     const { data, error } = await sb.functions.invoke("chat-ai", {
       body: { messages:[{ role:"user", content:text }], system: AI_PARSE_SYSTEM }
     });
     if(error) throw new Error(error.message || "调用失败");
-    let raw = (data && data.reply) || "";
-    raw = raw.replace(/```(json)?/gi, "").trim();
-    const m = raw.match(/\{[\s\S]*\}/);
-    if(!m) throw new Error("没解析出内容");
-    const json = JSON.parse(m[0]);
+    const json = tryJsonParse((data && data.reply) || "");
+    if(!json) throw new Error("AI 没返回可识别的格式");
     const planArr = (json.plan||[]).filter(x=>Number.isInteger(x.dow) && x.dow>=0 && x.dow<=6);
     if(!planArr.length) throw new Error("没有识别到具体日期");
-    for(const item of planArr){
-      editProj.week[item.dow] = {
-        title: (item.title||"").trim() || "未设置",
-        actions: (item.actions||[]).filter(a=>a && a.name).map(a=>({ name:a.name, sets:a.sets||null, reps:a.reps||null }))
-      };
-    }
+    applyPlanToEdit(planArr);
     planBackToWeek();
     msgEl.classList.add("ok");
-    msgEl.textContent = "✅ 识别出 " + planArr.length + " 天的安排，记得点下面「💾 保存」才生效";
+    msgEl.textContent = "✅ 搭搭识别出 " + planArr.length + " 天的安排，记得点下面「💾 保存」才生效";
   }catch(err){
     console.error("plan parse fail:", err);
-    msgEl.textContent = "识别失败：" + (err.message||"") + "。可以写简单点，或手动点「编辑」逐天设置";
+    msgEl.textContent = "识别失败：" + (err.message||"") + "。建议这样写：\n周一推日：仰卧起坐3组15个、俯卧撑4组12个\n周三拉日：坐姿划船4组10个\n（每天一行，动作用顿号或换行分开）";
   }
 }
 
