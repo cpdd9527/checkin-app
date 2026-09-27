@@ -1268,8 +1268,8 @@ window.addEventListener("DOMContentLoaded", async ()=>{
   $("loginAcct").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
   loadRemember();
   $("chatInput").focus();
-  const { data: { session } } = await sb.auth.getSession();
-  if(session) await loadApp();
+  // 每次打开都停在登录页手动登录：清掉本地会话（账号密码仍按"记住"选项自动回填）
+  try { await sb.auth.signOut({ scope: "local" }); } catch(_e){ /* 忽略网络异常，界面本就停在登录页 */ }
 });
 </script>
 </body>
