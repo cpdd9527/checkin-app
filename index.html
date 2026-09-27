@@ -138,6 +138,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .proj-card .em{font-size:24px}
   .proj-card .nm{font-size:13.5px;font-weight:700;margin-top:4px}
   .proj-card .cnt{font-size:11.5px;color:var(--dim);margin-top:2px}
+  .proj-card .undo{display:inline-block;margin-left:6px;padding:2px 8px;font-size:11px;color:#e8590c;background:#fff4e6;border:1px solid #ffd8a8;border-radius:8px;cursor:pointer}
+  .proj-card .undo:hover{background:#ffe8cc}
   .panel .manage-line{display:flex;gap:8px;margin-top:14px}
   .panel .manage-line input{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--txt);font-size:13.5px;outline:none}
   .panel .manage-line button{background:var(--bg2);border:1px solid var(--line);color:var(--acc2);border-radius:10px;padding:10px 14px;font-size:13px;cursor:pointer}
@@ -619,7 +621,7 @@ function openProjectPanel(){
     return `<div class="proj-card" onclick="startCheckin('${p.id}')">
       <div class="em">${p.emoji||"✅"}</div>
       <div class="nm">${p.name}</div>
-      <div class="cnt">今日已打卡 ${p.today||0} 次</div>
+      <div class="cnt">今日已打卡 ${p.today||0} 次${(p.today||0)>0?` <button class="undo" onclick="event.stopPropagation();undoCheckinToday('${p.id}')">撤回</button>`:""}</div>
     </div>`;
   }).join("");
   $("projPanel").classList.remove("hidden");
@@ -821,6 +823,31 @@ async function doCheckinRecord(project, meta){
     user_id: me.id, project_id: project.id, date: todayStr(), note:"", meta
   });
   project.today = (project.today||0)+1;
+}
+/* 撤回今天该项目的最近一次打卡（打错/想重新打卡时用） */
+async function undoCheckinToday(pid){
+  const p = myProjects.find(x=>x.id===pid);
+  if(!p) return;
+  if(!confirm("撤回「"+p.name+"」今天最近的一次打卡？")) return;
+  const t = todayStr();
+  try{
+    const { data } = await sb.from("checkins")
+      .select("id")
+      .eq("user_id", me.id).eq("project_id", pid).eq("date", t)
+      .order("created_at", { ascending:false })
+      .limit(1);
+    if(!data || !data.length){ alert("今天没有可撤回的打卡记录"); return; }
+    await sb.from("checkins").delete().eq("id", data[0].id);
+  }catch(e){
+    alert("撤回失败，稍后再试");
+    return;
+  }
+  await loadProjects();
+  openProjectPanel();
+  const box=$("chatBox");
+  if(box && document.querySelector("#mainView:not(.hidden)")){
+    addMsg("已撤回「"+p.name+"」今天最近一次打卡，重新打卡的话点卡片就行~","ai");
+  }
 }
 
 async function calcStreak(pid){
