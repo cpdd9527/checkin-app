@@ -411,13 +411,15 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         <div class="auth-msg" id="planDayMsg"></div>
       </div>
 
-      <div class="plan-sec-title">让搭搭帮你设置（一段话搞定）</div>
-      <textarea id="planAiText" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--txt);font-size:14px;outline:none;resize:vertical" placeholder="例如：周一推日：仰卧起坐3组15个、俯卧撑4组12个；周三拉日：坐姿划船4组10个、面拉3组15个；周日休息"></textarea>
-      <button class="btn" onclick="aiParsePlan()">🤖 搭搭识别到当前项目</button>
-      <div class="auth-msg" id="planAiMsg"></div>
+      <div id="planAiSaveZone">
+        <div class="plan-sec-title">让搭搭帮你设置（一段话搞定）</div>
+        <textarea id="planAiText" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--txt);font-size:14px;outline:none;resize:vertical" placeholder="例如：周一推日：仰卧起坐3组15个、俯卧撑4组12个；周三拉日：坐姿划船4组10个、面拉3组15个；周日休息"></textarea>
+        <button class="btn" onclick="aiParsePlan()">🤖 搭搭识别到当前项目</button>
+        <div class="auth-msg" id="planAiMsg"></div>
 
-      <button class="btn" onclick="planSaveProject()">💾 保存</button>
-      <div class="auth-msg" id="planEditMsg"></div>
+        <button class="btn" onclick="planSaveProject()">💾 保存</button>
+        <div class="auth-msg" id="planEditMsg"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -779,6 +781,7 @@ function planModifyProject(p){
   $("planEditName").value = editProj.name;
   $("planDayEditBox").classList.add("hidden");
   $("planWeekList").classList.remove("hidden");
+  $("planAiSaveZone").classList.remove("hidden");
   $("planEditMsg").textContent = "";
   $("planAiMsg").textContent = "";
   $("planAiText").value = "";
@@ -793,6 +796,7 @@ function planNewProject(){
   $("planEditName").value = "";
   $("planDayEditBox").classList.add("hidden");
   $("planWeekList").classList.remove("hidden");
+  $("planAiSaveZone").classList.remove("hidden");
   $("planEditMsg").textContent = "";
   $("planAiMsg").textContent = "";
   $("planAiText").value = "";
@@ -863,6 +867,7 @@ function planEditDay(d){
   renderDayActions(wp.actions || []);
   $("planWeekList").classList.add("hidden");
   $("planDayEditBox").classList.remove("hidden");
+  $("planAiSaveZone").classList.add("hidden");   // 进某天编辑时隐藏搭搭识别和保存
   $("planDayMsg").textContent="";
 }
 function planBackToWeek(){
@@ -874,6 +879,7 @@ function planBackToWeek(){
   planEditDow = null;
   $("planDayEditBox").classList.add("hidden");
   $("planWeekList").classList.remove("hidden");
+  $("planAiSaveZone").classList.remove("hidden"); // 回课表列表时恢复显示
   renderPlanWeekList();
 }
 function renderDayActions(actions){
