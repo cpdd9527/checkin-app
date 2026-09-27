@@ -638,12 +638,12 @@ async function loadProjects(){
     const { data: d2 } = await sb.from("projects").select("*").order("sort");
     myProjects = d2||[];
   }
-  // 今日次数
+  // 今日次数（并行查）
   const t = todayStr();
-  for(const p of myProjects){
+  await Promise.all(myProjects.map(async (p)=>{
     const { count } = await sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", p.id).eq("date", t);
     p.today = count||0;
-  }
+  }));
 }
 
 /* ================= 聊天渲染 ================= */
@@ -938,22 +938,28 @@ async function planSaveProject(){
       }
       pid = data[0].id;
     }
-    // 清掉该项目旧课表，写入新的
-    await sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", pid);
-    await sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", pid);
+    // 清掉该项目旧课表（两张表并行删），然后批量写入（各一次请求）
+    const wps = [], acts = [];
     for(const dow in editProj.week){
       const item = editProj.week[dow];
       if(!item || !item.title) continue;
       const d = parseInt(dow,10);
-      await sb.from("weekly_plan").insert({ user_id: me.id, project_id: pid, dow: d, title: item.title });
-      const acts = item.actions || [];
-      for(let i=0;i<acts.length;i++){
-        await sb.from("plan_actions").insert({ user_id: me.id, project_id: pid, dow: d, name: acts[i].name, sets: acts[i].sets||null, reps: acts[i].reps||null, sort: i });
-      }
+      wps.push({ user_id: me.id, project_id: pid, dow: d, title: item.title });
+      (item.actions||[]).forEach((a,i)=>{
+        acts.push({ user_id: me.id, project_id: pid, dow: d, name: a.name, sets: a.sets||null, reps: a.reps||null, sort: i });
+      });
     }
-    await loadProjects();
-    await loadAllPlans();
-    const days = Object.keys(editProj.week).filter(d=>editProj.week[d].title).length;
+    await Promise.all([
+      sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", pid),
+      sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", pid)
+    ]);
+    const jobs = [];
+    if(wps.length) jobs.push(sb.from("weekly_plan").insert(wps));
+    if(acts.length) jobs.push(sb.from("plan_actions").insert(acts));
+    await Promise.all(jobs);
+    // 并行刷新本地缓存
+    await Promise.all([loadProjects(), loadAllPlans()]);
+    const days = wps.length;
     planExitEditNow();
     showPlanToast("✅ 已保存「"+name+"」" + (days ? "，课表 "+days+" 天" : ""));
     return true;
