@@ -70,6 +70,15 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .acct-box{background:var(--bg2);border:1px dashed var(--acc);border-radius:10px;padding:14px;text-align:center;margin:10px 0}
   .acct-box .big{font-size:26px;font-weight:900;color:var(--acc2);letter-spacing:.08em}
   .acct-box .tip{font-size:12px;color:var(--sub);margin-top:6px}
+  .adm-user-row{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+  .adm-user-info{flex:1;min-width:0}
+  .adm-user-name{font-size:14px;font-weight:700;color:var(--txt);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .adm-tag{font-size:10.5px;color:var(--acc2);background:rgba(126,196,234,.15);border:1px solid rgba(126,196,234,.4);border-radius:8px;padding:1px 7px;font-weight:600}
+  .adm-user-acct{font-size:12px;color:var(--sub);margin-top:2px}
+  .adm-user-ops{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .mini-btn{background:var(--card);border:1px solid var(--line);color:var(--acc2);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600}
+  .mini-btn:active{transform:scale(.96)}
+  .mini-btn.danger{color:#c0392b;border-color:rgba(192,57,43,.35);background:rgba(192,57,43,.05)}
 
   /* ===== 主应用 ===== */
   .app{max-width:760px;margin:0 auto;height:100vh;display:flex;flex-direction:column}
@@ -318,7 +327,12 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
       <button class="btn" onclick="adminCreateUser()">创建账号</button>
       <div class="auth-msg" id="admMsg"></div>
     </div>
-    <div class="tip" style="color:var(--sub);font-size:13px;text-align:center;padding:20px 10px;border:1px dashed var(--line);border-radius:12px">更多管理能力（全员打卡汇总、数据导出等）建设中</div>
+    <div class="card" style="margin-bottom:12px">
+      <h3 style="font-size:15px;margin-bottom:4px">👥 账号管理</h3>
+      <p style="font-size:12px;color:var(--sub);margin-bottom:12px">可修改任意账号的昵称 / 登录账号 / 密码，或注销账号（注销会清空该账号的全部打卡与聊天数据，且对方无法再登录）</p>
+      <button class="btn" onclick="adminLoadUsers()">加载账号列表</button>
+      <div id="admUsers" style="margin-top:12px"></div>
+    </div>
   </div>
 
   <div class="nav-tabs">
@@ -1263,6 +1277,109 @@ async function adminCreateUser(){
   $("admMsg").classList.add("ok");
   $("admMsg").textContent = `✅ 创建成功！账号 ${acct}，初始密码 ${pwd}。把这两样发给对方即可`;
   ["admAcct","admName","admPwd","admQ","admA"].forEach(id=>$(id).value="");
+}
+
+/* 管理员：账号管理（改昵称/改账号/改密码/注销） */
+async function adminLoadUsers(){
+  const box = $("admUsers");
+  box.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:6px 0">加载中…</div>';
+  const { data, error } = await sb.rpc("admin_list_users");
+  if(error || !data){
+    box.innerHTML = '<div style="color:var(--danger);font-size:13px;padding:6px 0">加载失败，稍后再试一次</div>';
+    return;
+  }
+  if(!data.length){
+    box.innerHTML = '<div style="color:var(--sub);font-size:13px;padding:6px 0">目前只有你一个账号</div>';
+    return;
+  }
+  box.innerHTML = "";
+  data.forEach(u=>{
+    const row = document.createElement("div");
+    row.className = "adm-user-row";
+    const info = document.createElement("div");
+    info.className = "adm-user-info";
+    const name = document.createElement("div");
+    name.className = "adm-user-name";
+    name.appendChild(document.createTextNode(u.nickname || "（未设昵称）"));
+    if(u.role==="admin"){
+      const t = document.createElement("span"); t.className="adm-tag"; t.textContent="管理员"; name.appendChild(t);
+    }
+    if(u.id===me.id){
+      const t = document.createElement("span"); t.className="adm-tag"; t.textContent="我"; name.appendChild(t);
+    }
+    const acct = document.createElement("div");
+    acct.className = "adm-user-acct";
+    acct.textContent = "账号：" + (u.account||"-") + " · 注册于 " + fmtCN(String(u.created_at||"").slice(0,10));
+    info.appendChild(name); info.appendChild(acct);
+    const ops = document.createElement("div");
+    ops.className = "adm-user-ops";
+    const mkBtn = (label, fn, danger)=>{
+      const b = document.createElement("button");
+      b.className = "mini-btn" + (danger?" danger":"");
+      b.textContent = label;
+      b.addEventListener("click", ()=>fn(u));
+      return b;
+    };
+    ops.appendChild(mkBtn("改昵称", adminEditNickname));
+    ops.appendChild(mkBtn("改密码", adminEditPassword));
+    ops.appendChild(mkBtn("改账号", adminEditAccount));
+    ops.appendChild(mkBtn("注销", adminDeleteUser, true));
+    row.appendChild(info); row.appendChild(ops);
+    box.appendChild(row);
+  });
+}
+
+async function adminEditNickname(u){
+  const cur = u.nickname || "";
+  const v = prompt("给「" + u.account + "」修改昵称，当前：" + cur, cur);
+  if(v===null) return;
+  const val = v.trim();
+  if(!val){ alert("昵称不能为空"); return; }
+  const { error } = await sb.rpc("admin_update_user", { p_target: u.id, p_new_nickname: val });
+  if(error){ alert("修改失败：" + (error.message||"稍后再试")); return; }
+  if(u.id===me.id){ me.nickname = val; $("topName").textContent = val; }
+  alert("✅ 昵称已更新为「" + val + "」");
+  adminLoadUsers();
+}
+
+async function adminEditPassword(u){
+  const v = prompt("给「" + u.account + "」设置新密码（至少 6 位）：", "");
+  if(v===null) return;
+  if(v.length < 6){ alert("密码至少 6 位"); return; }
+  const { error } = await sb.rpc("admin_update_user", { p_target: u.id, p_new_password: v });
+  if(error){ alert("修改失败：" + (error.message||"稍后再试")); return; }
+  alert("✅ 密码已重置。请把新密码告诉对方");
+}
+
+async function adminEditAccount(u){
+  const v = prompt("为「" + u.account + "」设置新登录账号（2-12位字母或数字）：", u.account);
+  if(v===null) return;
+  const val = v.trim().toUpperCase();
+  if(!/^[A-Z0-9]{2,12}$/.test(val)){ alert("账号只能是 2-12 位字母或数字"); return; }
+  if(val===u.account){ return; }
+  const { error } = await sb.rpc("admin_update_user", { p_target: u.id, p_new_account: val });
+  if(error){
+    const m = error.message || "";
+    alert(m.indexOf("ACCOUNT_TAKEN")>=0 ? "这个账号已被占用，换一个试试" : "修改失败，稍后再试");
+    return;
+  }
+  alert("✅ 登录账号已改为 " + val);
+  adminLoadUsers();
+}
+
+async function adminDeleteUser(u){
+  const who = u.id===me.id ? "你自己" : ("「" + (u.nickname||u.account) + "」");
+  if(!confirm("确定注销 " + who + " 吗？\n\n该账号的打卡记录、聊天记录将全部清空，且无法再登录。此操作不可恢复！")) return;
+  if(u.role==="admin" && u.id!==me.id && !confirm("对方也是管理员，确定要注销吗？")) return;
+  const { error } = await sb.rpc("admin_delete_user", { p_target: u.id });
+  if(error){ alert("注销失败：" + (error.message||"稍后再试")); return; }
+  if(u.id===me.id){
+    alert("你的账号已注销");
+    doLogout();
+    return;
+  }
+  alert("✅ 已注销 " + (u.nickname||u.account));
+  adminLoadUsers();
 }
 
 async function loadStats(){
