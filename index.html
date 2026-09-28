@@ -93,6 +93,12 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .act-row .idx{color:var(--sub);width:18px;text-align:right}
   .act-row .nm{flex:1;font-weight:600}
   .act-row .spec{color:var(--acc2);font-weight:600}
+  .act-row .grip{color:var(--sub);cursor:grab;font-size:14px;user-select:none;-webkit-user-select:none;flex:0 0 auto}
+  .act-row[draggable=true]{cursor:grab}
+  .act-row.dragging{opacity:.45;border-style:dashed}
+  .act-edit{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--acc);border-radius:10px;padding:6px 10px;margin-bottom:6px;font-size:13px}
+  .act-edit input{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:var(--txt);font-size:13px;outline:none;min-width:0}
+  .act-edit input:focus{border-color:var(--acc)}
   .act-add-line{display:flex;gap:6px;margin:8px 0}
   .act-add-line input{flex:1;min-width:0;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 9px;color:var(--txt);font-size:13px;outline:none}
   .act-add-line input:focus{border-color:var(--acc)}
@@ -924,6 +930,16 @@ function planBackToWeek(){
   $("planAiSaveZone").classList.remove("hidden"); // 回课表列表时恢复显示
   renderPlanWeekList();
 }
+function repsTxt(r){ if(!r) return ""; return (/\d$/.test(String(r))) ? r+"个" : r; }
+
+function actionSpecTxt(a){
+  let s = a.sets ? a.sets+"组" : "";
+  if(a.reps){
+    const r = String(a.reps);
+    s += (/\d$/.test(r) ? "×"+r+"个" : "×"+r);
+  }
+  return s;
+}
 function renderDayActions(actions){
   const box = $("planDayActions");
   box.innerHTML = "";
@@ -934,17 +950,108 @@ function renderDayActions(actions){
   actions.forEach((a,i)=>{
     const row = document.createElement("div");
     row.className = "act-row";
+    row.setAttribute("draggable","true");
+    row.dataset.idx = i;
+    const grip = document.createElement("span"); grip.className="grip"; grip.textContent="☰"; grip.title="按住拖动排序";
     const idx = document.createElement("span"); idx.className="idx"; idx.textContent=(i+1)+".";
     const nm = document.createElement("span"); nm.className="nm"; nm.textContent=a.name;
-    const spec = document.createElement("span"); spec.className="spec";
-    spec.textContent = (a.sets ? a.sets+"组" : "") + (a.reps ? "×"+a.reps+"个" : "");
+    const spec = document.createElement("span"); spec.className="spec"; spec.textContent = actionSpecTxt(a);
+    const ed = document.createElement("button"); ed.className="mini-btn"; ed.textContent="改";
+    ed.onclick = ()=>editDayAction(actions, i);
     const del = document.createElement("button"); del.className="mini-btn danger"; del.textContent="删";
     del.onclick = ()=>{
       actions.splice(i,1);
       renderDayActions(actions);
     };
-    row.appendChild(idx); row.appendChild(nm); row.appendChild(spec); row.appendChild(del);
+    row.appendChild(grip); row.appendChild(idx); row.appendChild(nm); row.appendChild(spec); row.appendChild(ed); row.appendChild(del);
     box.appendChild(row);
+  });
+  bindRowDrag(box, actions);
+}
+/* 行内修改某个动作（名称/组数/次数） */
+function editDayAction(actions, i){
+  const box = $("planDayActions");
+  const rows = box.querySelectorAll(".act-row");
+  const row = rows[i];
+  if(!row || !actions[i]) return;
+  const a = actions[i];
+  const edBox = document.createElement("div");
+  edBox.className = "act-edit";
+  edBox.innerHTML =
+    `<input class="ae-name" value="${esc(a.name)}" placeholder="动作名" style="flex:1;min-width:88px">` +
+    `<input class="ae-sets" type="number" min="1" value="${a.sets||""}" placeholder="组数" style="width:58px">` +
+    `<input class="ae-reps" value="${esc(a.reps||"")}" placeholder="每几个" style="width:64px">` +
+    `<button class="mini-btn ae-save">✓保存</button>` +
+    `<button class="mini-btn ae-cancel">取消</button>`;
+  row.replaceWith(edBox);
+  edBox.querySelector(".ae-save").onclick = ()=>{
+    const name = edBox.querySelector(".ae-name").value.trim();
+    if(!name){ edBox.querySelector(".ae-name").focus(); return; }
+    const s = parseInt(edBox.querySelector(".ae-sets").value,10);
+    a.name = name;
+    a.sets = isNaN(s) ? null : s;
+    a.reps = edBox.querySelector(".ae-reps").value.trim() || null;
+    renderDayActions(actions);
+  };
+  edBox.querySelector(".ae-cancel").onclick = ()=>renderDayActions(actions);
+  edBox.querySelector(".ae-name").focus();
+}
+/* 动作排序：桌面拖拽 + 手机长按拖动 */
+function bindRowDrag(box, actions){
+  let dragIdx = -1;
+  box.querySelectorAll(".act-row").forEach(row=>{
+    row.addEventListener("dragstart", e=>{
+      dragIdx = parseInt(row.dataset.idx,10);
+      row.style.opacity = ".45";
+      try{ e.dataTransfer.setData("text/plain","x"); e.dataTransfer.effectAllowed="move"; }catch(err){}
+    });
+    row.addEventListener("dragend", ()=>{ row.style.opacity=""; dragIdx=-1; });
+    row.addEventListener("dragover", e=>e.preventDefault());
+    row.addEventListener("drop", e=>{
+      e.preventDefault();
+      const to = parseInt(row.dataset.idx,10);
+      if(dragIdx>=0 && dragIdx!==to){
+        const it = actions.splice(dragIdx,1)[0];
+        actions.splice(to,0,it);
+        renderDayActions(actions);
+      }
+    });
+  });
+  let tid=-1, from=-1, lastY=0, accY=0;
+  box.addEventListener("touchstart", e=>{
+    const t = e.target.closest ? e.target.closest(".act-row") : null;
+    if(!t) return;
+    clearTimeout(tid);
+    tid = setTimeout(()=>{
+      from = parseInt(t.dataset.idx,10);
+      lastY = e.touches[0].clientY; accY = 0;
+      t.classList.add("dragging");
+    }, 200);
+  }, {passive:true});
+  box.addEventListener("touchmove", e=>{
+    if(from<0) return;
+    e.preventDefault();
+    const y = e.touches[0].clientY;
+    accY += y - lastY; lastY = y;
+    const rows = Array.from(box.querySelectorAll(".act-row"));
+    const cur = rows.findIndex(r=>parseInt(r.dataset.idx,10)===from);
+    if(cur<0){ from=-1; return; }
+    const it = actions[cur];
+    const target = accY>0 ? rows[cur+1] : rows[cur-1];
+    if(target){
+      const tr = target.getBoundingClientRect();
+      if((accY>0 && y>tr.top+tr.height/2) || (accY<0 && y<tr.top+tr.height/2)){
+        actions.splice(cur,1);
+        actions.splice(accY>0 ? cur : cur-1, 0, it);
+        accY = 0;
+        renderDayActions(actions);
+        from = actions.indexOf(it); // 跟随该动作继续拖
+      }
+    }
+  }, {passive:false});
+  box.addEventListener("touchend", ()=>{
+    clearTimeout(tid);
+    if(from>=0){ from=-1; box.querySelectorAll(".act-row").forEach(r=>r.classList.remove("dragging")); }
   });
 }
 function planAddAction(){
@@ -1468,7 +1575,7 @@ function planSummaryForAI(){
     if(!setDays.length) continue;
     const parts = setDays.map(d=>{
       const item = wk[d];
-      const acts = (item.actions && item.actions.length) ? "（"+item.actions.map(a=>a.name+(a.sets?` ${a.sets}组×`:"")+(a.reps?a.reps+"个":"")).join("、")+"）" : "";
+      const acts = (item.actions && item.actions.length) ? "（"+item.actions.map(a=>a.name+(a.sets?` ${a.sets}组×`:"")+(repsTxt(a.reps))).join("、")+"）" : "";
       return "周"+WEEK_CN[+d]+" "+item.title+acts;
     });
     lines.push(p.name+"："+parts.join("；"));
@@ -1482,7 +1589,7 @@ function aiSystem(){
   let planInfo = "今天是周" + WEEK_CN[dow];
   if(plan){
     if(plan.actions && plan.actions.length){
-      const acts = plan.actions.map(a=>`${a.name}${a.sets?" "+a.sets+"组×":""}${a.reps?a.reps+"个":""}`).join("、");
+      const acts = plan.actions.map(a=>`${a.name}${a.sets?" "+a.sets+"组×":""}${repsTxt(a.reps)}`).join("、");
       planInfo += "，按课表该练「" + plan.name + "」，动作安排：" + acts;
     } else {
       planInfo += "，按课表该练「" + plan.name + "」" + (PLAN_DETAIL[plan.key] ? "，动作安排：" + PLAN_DETAIL[plan.key] : "");
