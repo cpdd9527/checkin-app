@@ -248,8 +248,11 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .mine-name{font-size:17px;font-weight:800;text-align:center}
   .mine-acct{font-size:12.5px;color:var(--dim);text-align:center;margin-top:2px}
   .mine-days{text-align:center;font-size:12.5px;color:var(--sub);margin-top:10px;padding:9px;background:var(--bg2);border-radius:10px}
-  .mine-btns{display:flex;gap:10px;margin-top:12px}
-  .mine-btns .btn{flex:1}
+  .mine-menu{display:flex;flex-direction:column;gap:9px;margin-top:14px}
+  .mine-menu-item{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;color:var(--sub);font-size:14.5px;font-weight:700;cursor:pointer}
+  .mine-menu-item:active{background:var(--bg2)}
+  .mine-menu-item.danger{color:#D57E8E}
+  .mine-menu-item .arrow{color:var(--dim);font-size:15px}
   .back-row{display:flex;align-items:center;margin-bottom:10px}
 
   @media (max-width:480px){
@@ -325,9 +328,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <div class="logo">打卡搭子<em> · </em><span id="topName"></span></div>
     <div class="spacer"></div>
     <span class="chip" id="topDate"></span>
-    <button class="icon-btn" onclick="openPlanPanel()">项目</button>
-    <button class="icon-btn hidden" id="adminBtn" onclick="showAdmin()">管理</button>
-    <button class="icon-btn" onclick="doLogout()">退出</button>
   </div>
 
   <!-- 打卡视图 -->
@@ -643,7 +643,6 @@ async function loadApp(){
   $("appView").classList.remove("hidden");
   $("topName").textContent = me.nickname;
   $("topDate").textContent = fmtCN(todayStr());
-  if(me.role==="admin") $("adminBtn").classList.remove("hidden");
   await loadProjects();
   await loadAllPlans();
   await bootChat();
@@ -1667,10 +1666,13 @@ function showMineHome(){
       <div class="mine-acct">账号：${esc(me.account||"")}</div>
       <div class="mine-days">来打卡搭子 <b>${days}</b> 天了，继续加油 💪</div>
       <div style="font-size:11.5px;color:var(--dim);text-align:center;margin-top:8px">点头像可以上传自己的照片</div>
-      <div class="mine-btns">
-        <button class="btn" onclick="mineRecords()">📋 打卡记录</button>
-        <button class="btn" onclick="mineStats()">📊 打卡统计</button>
-      </div>
+    </div>
+    <div class="mine-menu">
+      <button class="mine-menu-item" onclick="mineRecords()">📋 打卡记录<span class="arrow">›</span></button>
+      <button class="mine-menu-item" onclick="mineStats()">📊 打卡统计<span class="arrow">›</span></button>
+      <button class="mine-menu-item" onclick="openPlanPanel()">📁 项目<span class="arrow">›</span></button>
+      ${me.role==="admin" ? `<button class="mine-menu-item" onclick="showAdmin()">🛡️ 管理<span class="arrow">›</span></button>` : ""}
+      <button class="mine-menu-item danger" onclick="doLogout()">🚪 退出</button>
     </div>`;
 }
 async function mineRecords(){
