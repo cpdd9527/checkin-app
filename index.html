@@ -425,6 +425,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
           <button class="mini-btn" onclick="planAddAction()">＋添加</button>
         </div>
         <button class="mini-btn" onclick="planBackToWeek()" style="width:190px;margin:38px auto 0;display:block;background:var(--acc);color:#fff;border:none">完成这天的动作</button>
+        <button class="mini-btn" onclick="planDelDay(planEditDow)" style="width:190px;margin:12px auto 0;display:block;border:1px solid #e05555;color:#e05555;background:transparent">🗑 删除这天的计划</button>
         <div class="auth-msg" id="planDayMsg"></div>
       </div>
 
@@ -875,8 +876,29 @@ function weekRow(d){
   }
   const ed = document.createElement("button"); ed.className="mini-btn"; ed.textContent="编辑";
   ed.onclick = ()=>planEditDay(d);
-  row.appendChild(dow); row.appendChild(txt); row.appendChild(ed);
+  const rm = document.createElement("button"); rm.className="mini-btn danger"; rm.textContent="删当天";
+  rm.onclick = ()=>planDelDay(d);
+  row.appendChild(dow); row.appendChild(txt); row.appendChild(ed); row.appendChild(rm);
   return row;
+}
+
+/* 删除某一天的课表设置（内存态，点「保存」后同步到数据库） */
+function planDelDay(d){
+  if(!editProj) return;
+  const wp = editProj.week[d];
+  if(!wp || !wp.title){
+    if(planEditDow!==null && d===planEditDow){
+      planBackToWeek();
+    }
+    return;
+  }
+  if(!confirm("删除周"+WEEK_CN[d]+"的计划「"+(wp.title||"")+"」？\n该天的动作明细也会一起删掉，点保存后生效。")) return;
+  delete editProj.week[d];
+  planEditDow = null;
+  $("planDayEditBox").classList.add("hidden");
+  $("planWeekList").classList.remove("hidden");
+  $("planAiSaveZone").classList.remove("hidden");
+  renderPlanWeekList();
 }
 
 function planEditDay(d){
