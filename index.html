@@ -274,7 +274,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
       <div class="field"><label>账号</label><input id="loginAcct" placeholder="例如 83725" autocomplete="username"></div>
       <div class="field"><label>密码</label><input id="loginPwd" type="password" placeholder="输入密码" autocomplete="current-password"></div>
       <div class="rem-row">
-        <label class="rem-item"><input type="checkbox" id="remAcct"> 记住账号</label>
+        <label class="rem-item"><input type="checkbox" id="remAcct" checked> 记住账号</label>
         <label class="rem-item"><input type="checkbox" id="remPwd"> 记住密码</label>
       </div>
       <button class="btn" onclick="doLogin()">登 录</button>
@@ -596,14 +596,24 @@ async function doRegister(){
     });
     if(rpcErr){ await sb.auth.signOut(); continue; }
     ok=true;
-    // 展示随机账号
+    // 展示随机账号，停留界面让用户抄好，点"确认"再进入
+    try{
+      localStorage.setItem("ck_acct", account);
+      $("remAcct").checked = true;
+      $("loginAcct").value = account;
+    }catch(e){}
     const box = document.createElement("div");
     box.className="acct-box";
     box.innerHTML = `<div style="font-size:12.5px;color:var(--sub)">🎉 注册成功！你的账号是</div><div class="big">${account}</div><div class="tip">请截图或抄下来，登录要用。<br>密码是你自己设置的，密保答案请牢记。</div>`;
     const oldBtn = $("viewReg").querySelector(".btn");
     $("viewReg").insertBefore(box, oldBtn);
+    const okBtn = document.createElement("button");
+    okBtn.className="btn";
+    okBtn.style.marginTop = "10px";
+    okBtn.textContent = "✅ 确认，进入打卡搭子";
+    okBtn.onclick = async ()=>{ await loadApp(); };
+    $("viewReg").insertBefore(okBtn, oldBtn);
     $("regMsg").textContent = "";
-    await loadApp();
     return;
   }
   $("regMsg").textContent="注册遇到问题，稍后再试一次";
