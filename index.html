@@ -642,19 +642,6 @@ async function loadApp(){
 async function loadProjects(){
   const { data } = await sb.from("projects").select("*").order("sort");
   myProjects = data||[];
-  if(!myProjects.some(p=>p.name==="锻炼") || !myProjects.some(p=>p.name==="学习")){
-    const defs = [
-      { name:"锻炼", emoji:"💪", sort:1 },
-      { name:"学习", emoji:"📚", sort:2 },
-    ];
-    for(const d of defs){
-      if(!myProjects.some(p=>p.name===d.name)){
-        await sb.from("projects").insert({ user_id: me.id, ...d });
-      }
-    }
-    const { data: d2 } = await sb.from("projects").select("*").order("sort");
-    myProjects = d2||[];
-  }
   // 今日次数（并行查）
   const t = todayStr();
   await Promise.all(myProjects.map(async (p)=>{
@@ -713,7 +700,10 @@ async function chatReply(text){
 
 /* ================= 打卡逻辑 ================= */
 function openProjectPanel(){
-  if(!myProjects.length) return;
+  if(!myProjects.length){
+    openPlanPanel();
+    return;
+  }
   $("projGrid").innerHTML = myProjects.map(p=>{
     return `<div class="proj-card" onclick="startCheckin('${p.id}')">
       <div class="em">${p.emoji||"✅"}</div>
@@ -1517,6 +1507,23 @@ async function bootChat(){
     return;
   }
 
+  // 还没有任何打卡项目 → 新人引导：先建自己的打卡项目
+  if(!myProjects.length){
+    const pickN = a=>a[Math.floor(Math.random()*a.length)];
+    const newTpl = [
+      () => `嗨，${w}！先认识一下：我是搭搭，你的打卡搭子——负责盯你锻炼、陪你学习、夸你两句、偶尔损你一嘴。\n\n现在你的打卡清单还是空的，点右上角「项目」按钮，添加你的第一个打卡项目吧！想打卡什么就建什么，「锻炼」「学习」都行，还能给项目设好每周课表，我天天帮你盯着～`,
+      () => `${w}来啦！我是搭搭👋 你还没建打卡项目，先去右上角「项目」里加一个吧——想坚持什么就建什么，加完我就能帮你打卡、提醒、记账了！`,
+      () => `哟，${w}！欢迎来打卡搭子。你的打卡清单还是空的，点右上角「项目」，添加第一个打卡项目吧，比如「锻炼」「学习」，或者任何你想每天坚持的事～`,
+    ];
+    let newMsg = pickN(newTpl)();
+    if(histCount) newMsg += "\n\n（上面是之前的聊天，点「📅 历史」可以按日期回看）";
+    addMsg(newMsg,"ai");
+    renderDailyTips();
+    me.last_greet_date = t;
+    await sb.from("profiles").update({ last_greet_date: t }).eq("id", me.id);
+    return;
+  }
+
   // 昨天的账
   const { data: yc } = await sb.from("checkins").select("project_id, meta").eq("user_id", me.id).eq("date", ystr);
   const yList = yc||[];
@@ -1589,12 +1596,16 @@ async function bootChat(){
 }
 
 async function renderDailyTips(){
+  const box=$("quickInputs");
+  if(!myProjects.length){
+    box.innerHTML = `<span class="qchip" onclick="openPlanPanel()">＋ 添加打卡项目</span>`;
+    return;
+  }
   const plan = todayPlan();
   const tips=[];
   if(plan) tips.push(`今天课表：${plan.name}`);
   const debts = await computeDebts();
   if(debts.length) tips.push(`还欠着：${debts.map(d=>`周${WEEK_CN[d.dow]}的${d.name}`).join("、")}`);
-  const box=$("quickInputs");
   box.innerHTML = tips.map(t=>`<span class="qchip">${t}</span>`).join("");
 }
 
