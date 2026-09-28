@@ -1989,10 +1989,31 @@ async function loadStats(){
   const list = rows||[];
   const box=$("statsView");
   const today = todayStr();
-  // 连续天数（全项目）
-  const allDates = new Set(list.map(r=>r.date));
-  let streak=0; const d=new Date();
-  while(allDates.has(todayStr(d))){ streak++; d.setDate(d.getDate()-1); }
+  // 训练项目：优先叫"锻炼"的项目，否则第一个设了课表的项目
+  const trainProj = myProjects.find(p=>p.name==="锻炼") || myProjects.find(p=>plansByProj[p.id] && Object.keys(plansByProj[p.id]).some(d=>plansByProj[p.id][d] && plansByProj[p.id][d].title)) || null;
+  const trainRows = trainProj ? list.filter(r=>r.project_id===trainProj.id) : [];
+  const trainDates = new Set(trainRows.map(r=>r.date));
+  const wp = trainProj && plansByProj[trainProj.id] ? plansByProj[trainProj.id] : {};
+  const hasTrainPlan = trainProj && Object.keys(wp).some(d=>wp[d] && wp[d].title);
+  // 连续训练日：按课表走，训练日打卡才算，休息日自动跳过不断
+  let streak=0;
+  if(hasTrainPlan){
+    const dd2=new Date();
+    for(let i=0;i<730;i++){
+      const dw = dd2.getDay();
+      if(wp[dw] && wp[dw].title){
+        if(trainDates.has(todayStr(dd2))) streak++;
+        else break;
+      }
+      dd2.setDate(dd2.getDate()-1);
+    }
+  } else {
+    // 没有课表时回退：任意打卡连续天数
+    const allDates = new Set(list.map(r=>r.date));
+    const dd2=new Date();
+    while(allDates.has(todayStr(dd2))){ streak++; dd2.setDate(dd2.getDate()-1); }
+  }
+  const streakLabel = hasTrainPlan ? "连续训练日（个）" : "连续打卡（天）";
   // 本周打卡
   const now=new Date(); const dow=(now.getDay()+6)%7; // 周一=0
   const monday=new Date(now); monday.setDate(now.getDate()-dow);
@@ -2008,19 +2029,32 @@ async function loadStats(){
     counts.push(list.filter(r=>r.date===s).length);
     days.push(s);
   }
-  // 各项目
+  // 各项目（有课表的按课表算连续，无课表按天）
   const projStat = myProjects.map(p=>{
     const rows2 = list.filter(r=>r.project_id===p.id);
     let pStreak=0; const dd=new Date();
-    const ds=new Set(rows2.map(r=>r.date));
-    while(ds.has(todayStr(dd))){ pStreak++; dd.setDate(dd.getDate()-1); }
-    return { p, total: rows2.length, streak: pStreak };
+    const pWp = plansByProj[p.id] || {};
+    const pHasPlan = Object.keys(pWp).some(d=>pWp[d] && pWp[d].title);
+    if(pHasPlan){
+      for(let i=0;i<730;i++){
+        const dw = dd.getDay();
+        if(pWp[dw] && pWp[dw].title){
+          if(rows2.some(r=>r.date===todayStr(dd))) pStreak++;
+          else break;
+        }
+        dd.setDate(dd.getDate()-1);
+      }
+    } else {
+      const ds=new Set(rows2.map(r=>r.date));
+      while(ds.has(todayStr(dd))){ pStreak++; dd.setDate(dd.getDate()-1); }
+    }
+    return { p, total: rows2.length, streak: pStreak, hasPlan: pHasPlan };
   });
 
   box.innerHTML = `
     <div class="back-row"><button class="mini-btn" onclick="showMineHome()">← 返回我的</button></div>
     <div class="stat-grid">
-      <div class="stat-cell"><div class="v">${streak}</div><div class="k">连续打卡（天）</div></div>
+      <div class="stat-cell"><div class="v">${streak}</div><div class="k">${streakLabel}</div></div>
       <div class="stat-cell"><div class="v">${weekCount}</div><div class="k">本周打卡（次）</div></div>
       <div class="stat-cell"><div class="v">${list.length}</div><div class="k">累计打卡（次）</div></div>
       <div class="stat-cell"><div class="v">${Math.round(weekCount/weekTotal*100)}%</div><div class="k">本周完成率</div></div>
@@ -2028,7 +2062,7 @@ async function loadStats(){
     <div class="chart-box"><h4>近 14 天打卡趋势</h4><div id="chartTrend"></div></div>
     <div class="chart-box"><h4>项目占比</h4><div id="chartPie"></div></div>
     <div class="proj-list-stat">
-      ${projStat.map(s=>`<div class="row"><span>${s.p.emoji||"✅"} ${s.p.name}</span><span>连续 <b>${s.streak}</b> 天 · 共 <b>${s.total}</b> 次</span></div>`).join("")}
+      ${projStat.map(s=>`<div class="row"><span>${s.p.emoji||"✅"} ${s.p.name}</span><span>连续 <b>${s.streak}</b> ${s.hasPlan?"个训练日":"天"} · 共 <b>${s.total}</b> 次</span></div>`).join("")}
     </div>`;
 
   // 近14天趋势（CSS柱状图）
