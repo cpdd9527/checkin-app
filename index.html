@@ -1537,12 +1537,15 @@ async function aiChat(t){
     const pmAll = [...reply.matchAll(planRe)];
     const actRe = /\[动:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\|([^|\]]*)\|([^|\]]*)\|([^\]]*)\]/g;
     const amAll = [...reply.matchAll(actRe)];
-    let clean = reply.replace(/\[[记改动]:[^\]\n]*\]/g, "").trim();
+    const moveRe = /\[移:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\]/g;
+    const mvAll = [...reply.matchAll(moveRe)];
+    let clean = reply.replace(/\[[记改动静]:[^\]\n]*\]/g, "").trim();
     const lb = loading.querySelector(".msg");
     if(lb) lb.innerHTML = `<span class="who">搭搭</span>` + attachSticker(esc(clean));
     for(const m of rmAll){ await saveRecord(m[1].trim(), m[2].trim(), m[3].trim(), m[4].trim()); }
     for(const m of pmAll){ await applyAiPlanChange(m[1].trim(), m[2].trim(), m[3].trim(), m[4].trim()); }
     for(const m of amAll){ await applyAiActionChange(m[1].trim(), m[2].trim(), m[3].trim(), m[4].trim(), m[5].trim(), m[6].trim()); }
+    for(const m of mvAll){ await applyAiMove(m[1].trim(), m[2].trim(), m[3].trim()); }
     saveChat("assistant", clean);
   }catch(err){
     console.error("ai chat fallback:", err);
@@ -1602,7 +1605,7 @@ function aiSystem(){
           planInfo + "。" +
           (userPlans ? "【用户自定义课表】\n" + userPlans + "\n（用户问某个项目的安排时，按该项目课表回答，没有设置的那天不要编造动作）\n" : "") +
           "【用户最近7天真实打卡记录】\n" + (aiCtxCache || "（暂无）") + "\n" +
-          "规则：① 用户问「昨天练了什么」「最近打卡了啥」「我打卡情况怎么样」等涉及打卡记录的问题时，必须以上面的真实打卡记录为准如实回答，记录里没有的就是没有，绝对不能编造；② 用户问「今天/该练什么」「练哪个动作」「一组多少」时，结合今天的课表和动作明细给出具体动作和组数建议；③ 用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。④ 用户要求「修改/调整/设置/更改 某个打卡项目的课表或当天计划」（例如：把学习项目周一到周六都改成口腔科、某天改成休息、删除某天的安排、给某天加动作等）时，你必须在回复的最末尾另起一行，单独输出这条标记：[改:项目名|周几|标题|动作]。项目名=用户说的项目（如「学习」「锻炼」，必须是上面【用户自定义课表】里出现的项目名，找不到就用用户说的名字）；周几=要改的天，可以写「周一」「周六」或「周一到周五」「周一到周六」「1-6」「周一、周三」，删除某天时也要把该天写出来；标题=当天计划的新名称（如 口腔科、推日、休息），如果用户要删除某天的安排，标题填「删除」；动作=该天的动作明细，如「仰卧起坐3组15个、俯卧撑4组12个」，用户没提动作就填「无」。如果用户要求把某一整天的计划整体移动到另一天（如「把周四的拉日整体移到周三」），必须输出两个 [改:] 标记：第一个把目标天改为该计划（标题=计划名，动作=从课表抄原计划的全部动作明细）；第二个把原天删除（标题=删除，动作=无）。输出 [改:] 标记后，正文里告诉用户已经改好了。⑤ 用户要求「修改/设计/增加/删除 某一天里的某个动作」时（例如：周一的俯卧撑两组改成三组；帮我在周三加仰卧起坐三组一组十个；把周二的深蹲删掉），你必须先根据【用户自定义课表】判断该天有没有这个动作，然后在回复的最末尾另起一行，单独输出这条标记：[动:项目名|周几|动作名|组数|次数|操作]。项目名=用户说的项目；周几=要改的天（支持「周一」或「周一到周五」这种范围，多个天会应用到每一天）；动作名=要处理的动作名称；组数=几组（用数字，如 3）；次数=每组几个或次数文字（如 15、每侧15个）；操作=「改」（修改该天已有动作的组数/次数，用户没提的那项就填课表里的原值）、「加」（新增该动作，组数次数按用户说的）、「删」（删除该动作，组数次数填「无」）。输出 [动:] 标记后，正文里告诉用户改好了。除了①②③④⑤五种情况，其他任何时候绝对不要输出 [记:] [改:] 或 [动:] 标记。" +
+          "规则：① 用户问「昨天练了什么」「最近打卡了啥」「我打卡情况怎么样」等涉及打卡记录的问题时，必须以上面的真实打卡记录为准如实回答，记录里没有的就是没有，绝对不能编造；② 用户问「今天/该练什么」「练哪个动作」「一组多少」时，结合今天的课表和动作明细给出具体动作和组数建议；③ 用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。④ 用户要求「修改/调整/设置/更改 某个打卡项目的课表或当天计划」（例如：把学习项目周一到周六都改成口腔科、某天改成休息、删除某天的安排、给某天加动作等）时，你必须在回复的最末尾另起一行，单独输出这条标记：[改:项目名|周几|标题|动作]。项目名=用户说的项目（如「学习」「锻炼」，必须是上面【用户自定义课表】里出现的项目名，找不到就用用户说的名字）；周几=要改的天，可以写「周一」「周六」或「周一到周五」「周一到周六」「1-6」「周一、周三」，删除某天时也要把该天写出来；标题=当天计划的新名称（如 口腔科、推日、休息），如果用户要删除某天的安排，标题填「删除」；动作=该天的动作明细，如「仰卧起坐3组15个、俯卧撑4组12个」，用户没提动作就填「无」。如果用户要求把某一整天的计划整体移动/挪/搬到另一天（如「把周四的拉日整体移到周三」「把学习挪到周六」），必须在回复的最末尾另起一行，单独输出这条标记：[移:项目名|原天|目标天]。项目名=用户说的项目；原天=计划现在所在的天（如「周四」）；目标天=要移到的天（如「周三」）。只输出这一个 [移:] 标记，绝对不要输出 [改:] 或 [动:]。输出 [改:] 标记后，正文里告诉用户已经改好了。⑤ 用户要求「修改/设计/增加/删除 某一天里的某个动作」时（例如：周一的俯卧撑两组改成三组；帮我在周三加仰卧起坐三组一组十个；把周二的深蹲删掉），你必须先根据【用户自定义课表】判断该天有没有这个动作，然后在回复的最末尾另起一行，单独输出这条标记：[动:项目名|周几|动作名|组数|次数|操作]。项目名=用户说的项目；周几=要改的天（支持「周一」或「周一到周五」这种范围，多个天会应用到每一天）；动作名=要处理的动作名称；组数=几组（用数字，如 3）；次数=每组几个或次数文字（如 15、每侧15个）；操作=「改」（修改该天已有动作的组数/次数，用户没提的那项就填课表里的原值）、「加」（新增该动作，组数次数按用户说的）、「删」（删除该动作，组数次数填「无」）。输出 [动:] 标记后，正文里告诉用户改好了。除了①②③④⑤五种情况，其他任何时候绝对不要输出 [记:] [改:] 或 [动:] 标记。" +
           "回复要口语化、简短（两三句内）、像朋友聊天，多鼓励，少说教。可以适当调侃用户偷懒。";
   return s;
 }
@@ -1673,6 +1676,34 @@ async function applyAiPlanChange(projName, dowStr, title, actStr){
   }catch(err){
     console.error("ai plan change fail:", err);
     addMsg("改的时候出了点岔子（"+(err.message||"网络问题")+"），你先在「项目」界面手动改一下，回头我修好再喊我。","ai");
+  }
+}
+async function applyAiMove(projName, fromStr, toStr){
+  const p = myProjects.find(x=>x.name===projName) || myProjects.find(x=>projName && (x.name.indexOf(projName)>=0 || projName.indexOf(x.name)>=0));
+  if(!p){ addMsg("没找到叫「"+projName+"」的项目，移不了😢 你先在「项目」里建一个。","ai"); return; }
+  const fromD = parseDowRange(fromStr);
+  const toD = parseDowRange(toStr);
+  if(!fromD.length || !toD.length){ addMsg("搭搭没听清要从哪天移到哪天，再说一次？比如「把周四的拉日整体移到周三」。","ai"); return; }
+  const src = fromD[0], dst = toD[0];
+  const cur = plansByProj[p.id] && plansByProj[p.id][src];
+  if(!cur || !cur.title){ addMsg("周"+WEEK_CN[src]+"本来就没安排内容，没法移动。","ai"); return; }
+  const title = cur.title;
+  const actions = (cur.actions||[]).map(a=>({ name:a.name, sets:a.sets, reps:a.reps }));
+  try{
+    await Promise.all([
+      sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", p.id).in("dow",[src,dst]),
+      sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", p.id).in("dow",[src,dst])
+    ]);
+    await sb.from("weekly_plan").insert({ user_id: me.id, project_id: p.id, dow: dst, title });
+    if(actions.length) await sb.from("plan_actions").insert(actions.map((a,i)=>({ user_id: me.id, project_id: p.id, dow: dst, name:a.name, sets:a.sets||null, reps:a.reps||null, sort:i })));
+    plansByProj[p.id] = plansByProj[p.id] || {};
+    delete plansByProj[p.id][src];
+    plansByProj[p.id][dst] = { title, actions };
+    const actTxt = actions.length ? "（"+actions.map(a=>a.name+(a.sets?" "+a.sets+"组×":"")+repsTxt(a.reps)).join("、")+"）" : "";
+    addMsg("移好啦！周"+WEEK_CN[src]+"的「"+title+"」已整体搬到周"+WEEK_CN[dst]+actTxt+"，周"+WEEK_CN[src]+"已清空。去「项目」里就能看到 ✅","ai");
+  }catch(err){
+    console.error("ai move fail:", err);
+    addMsg("移动的时候出了点岔子（"+(err.message||"网络问题")+"），你先在「项目」界面手动改一下？","ai");
   }
 }
 /* ===== 搭搭修改单个动作：[动:项目名|周几|动作名|组数|次数|操作] ===== */
