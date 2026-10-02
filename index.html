@@ -213,6 +213,18 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .proj-list-stat .row{display:flex;justify-content:space-between;padding:5px 0;font-size:13.5px;border-bottom:1px dashed var(--line)}
   .proj-list-stat .row:last-child{border:0}
   .proj-list-stat b{color:var(--acc2)}
+  /* 打卡热力图 */
+  .heat-box{display:flex;flex-direction:column;gap:6px;overflow-x:auto}
+  .heat-month{font-size:12.5px;font-weight:800;color:var(--sub);margin-top:4px}
+  .heat-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;min-width:300px}
+  .heat-cell{aspect-ratio:1;border-radius:4px;background:#E7EDF4}
+  .heat-cell.t1{background:#C9E4F7}
+  .heat-cell.t2{background:#9CCFE9}
+  .heat-cell.t3{background:#6FB6DE}
+  .heat-cell.t5{background:#1F76AD}
+  .heat-legend{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--dim);margin-top:8px;justify-content:flex-end}
+  .heat-legend i{width:11px;height:11px;border-radius:3px;background:#E7EDF4;display:inline-block}
+  .heat-legend i.t1{background:#C9E4F7}.heat-legend i.t3{background:#6FB6DE}.heat-legend i.t5{background:#1F76AD}
 
   /* 管理面板占位 */
   .admin-panel{padding:14px;overflow-y:auto;flex:1}
@@ -226,6 +238,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .rec-kind{font-size:11.5px;font-weight:800;padding:2px 8px;border-radius:20px}
   .rec-kind.k-锻炼{background:rgba(232,135,74,.16);color:var(--acc2)}
   .rec-kind.k-学习{background:rgba(103,187,116,.16);color:#6FBF7F}
+  .rec-kind.k-漏卡{background:rgba(226,109,92,.16);color:#E26D5C}
+  .rec-kind.k-月度总结{background:rgba(78,168,222,.16);color:#3F96C8}
   .rec-title{font-size:15.5px;font-weight:800;color:var(--txt)}
   .rec-status{font-size:12px;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--sub)}
   .rec-status.done{color:#6FBF7F;border-color:rgba(103,187,116,.4);background:rgba(103,187,116,.08)}
@@ -1508,6 +1522,18 @@ function sendChat(){
   }
   addMsg(t,"me");
   saveChat("user", t);
+  if(window._missAsk){
+    const q = window._missAsk;
+    window._missAsk = null;
+    const r = classifyMiss(t);
+    saveRecord("漏卡", q.names.join("、")+"（"+q.date+"）", r.status, t);
+    addMsg(pick([
+      `收到！原因记下了：${r.status}。月底我帮你复盘，看看到底是谁在挡路😉`,
+      `嗯，${r.status}——了解了，先记下。次数多了我会提醒你，别让同一种原因反复出现哦`,
+      `好，${r.status}。记上了！下个月咱们想办法避开它💪`,
+    ])(),"ai");
+    return;
+  }
   aiChat(t);
 }
 /* 真AI对话：调 Supabase Edge Function -> 智谱大模型；失败自动降级本地话术 */
@@ -1885,6 +1911,13 @@ async function bootChat(){
       names => `昨天「${names}」缺了席，我不批评你，但今天得补上哦💪`,
     ];
     msg += pick(missTpl)(yMiss.join("、")) + "\n";
+    // 漏卡追踪：记录待问状态，等用户下一条回复时拦截归类
+    window._missAsk = { names: yMiss, date: ystr };
+    msg += pick([
+      () => `顺便问一句：昨天没打卡是因为啥？忙、累、生病还是偷懒？跟我说说，我记个账，月底帮你看看是什么老挡路😉`,
+      () => `对了，昨天没打卡的原因方便说下吗？（忙/累/生病/偷懒/其他）我记下来，月底一起复盘。`,
+      () => `好奇问一下：昨天怎么漏了？说说原因，我帮你记着，月底看看到底是谁在捣乱🤔`,
+    ])() + "\n";
   } else {
     const fullTpl = [
       () => `昨天锻炼、学习都齐了，继续保持这个节奏👏`,
@@ -1920,6 +1953,8 @@ async function bootChat(){
   msg += histCount ? `\n\n（上面是之前的聊天，点「📅 历史」可以按日期回看）` : "";
   addMsg(msg,"ai");
   renderDailyTips();
+  // 每月最后一天：自动生成月度总结（含漏卡复盘）
+  tryMonthlySummary();
   // 标记今天已播过开场白
   me.last_greet_date = t;
   await sb.from("profiles").update({ last_greet_date: t }).eq("id", me.id);
@@ -2381,6 +2416,7 @@ async function loadStats(){
       <div class="stat-cell"><div class="v">${Math.round(weekCount/weekTotal*100)}%</div><div class="k">本周完成率</div></div>
     </div>
     <div class="chart-box"><h4>近 14 天打卡趋势</h4><div id="chartTrend"></div></div>
+    <div class="chart-box"><h4>打卡热力图（近 3 个月）</h4><div class="heat-box" id="chartHeat"></div></div>
     <div class="chart-box"><h4>项目占比</h4><div id="chartPie"></div></div>
     <div class="proj-list-stat">
       ${projStat.map(s=>`<div class="row"><span>${s.p.emoji||"✅"} ${s.p.name}</span><span>连续 <b>${s.streak}</b> ${s.hasPlan?"个训练日":"天"} · 共 <b>${s.total}</b> 次</span></div>`).join("")}
@@ -2398,6 +2434,104 @@ async function loadStats(){
     return `<div class="ratio-row"><span>${s.p.emoji||"✅"} ${s.p.name} <b>${s.total}次</b></span><div class="ratio-track"><div class="ratio-fill" style="width:${pct}%;background:${COLORS[i%COLORS.length]}"></div></div><em>${pct}%</em></div>`;
   }).join("") : "暂无打卡数据";
   $("chartPie").innerHTML = ratioHtml;
+  // 打卡热力图：近3个月月历，颜色深浅 = 当天打卡次数
+  const dateCount = {};
+  for(const r of list) dateCount[r.date] = (dateCount[r.date]||0)+1;
+  $("chartHeat").innerHTML = buildHeat(dateCount);
+}
+
+function buildHeat(dateCount){
+  const months=[];
+  const now=new Date();
+  for(let k=2;k>=0;k--){
+    const y=now.getFullYear(), m=now.getMonth()-k;
+    const d0=new Date(y,m,1);
+    months.push({ y:d0.getFullYear(), m:d0.getMonth(), days:new Date(y,m+1,0).getDate(), firstDow:(d0.getDay()+6)%7 });
+  }
+  let html="";
+  for(const mo of months){
+    let cells="";
+    for(let i=0;i<mo.firstDow;i++) cells+=`<div class="heat-cell"></div>`;
+    for(let d=1;d<=mo.days;d++){
+      const key=mo.y+"-"+String(mo.m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+      const c=dateCount[key]||0;
+      const cls=c===0?"":(c<3?" t1":(c<5?" t2":(c<8?" t3":" t5")));
+      cells+=`<div class="heat-cell${cls}" title="${key} · ${c}次"></div>`;
+    }
+    html+=`<div class="heat-month">${mo.y}年${mo.m+1}月</div><div class="heat-grid">${cells}</div>`;
+  }
+  html+=`<div class="heat-legend">少 <i></i><i class="t1"></i><i class="t2"></i><i class="t3"></i><i class="t5"></i> 多</div>`;
+  return html;
+}
+
+/* 漏卡原因归类 */
+function classifyMiss(t){
+  if(/忙|加班|没时间|没空|开会|应酬|出差|事多|工作|赶工/.test(t)) return {status:"忙"};
+  if(/累|困|疲惫|乏|没劲|虚脱|透支/.test(t)) return {status:"累"};
+  if(/病|感冒|发烧|不舒服|疼|痛|难受|例假|生理|头晕|呕吐|咳嗽/.test(t)) return {status:"生病"};
+  if(/偷懒|懒|不想|摆烂|颓|emo|没心情|心情不好|拖延/.test(t)) return {status:"偷懒"};
+  if(/忘|记错|错过|没想起来|忘了时间/.test(t)) return {status:"忘了"};
+  return {status:"其他"};
+}
+
+/* 每月最后一天：生成月度总结（含漏卡原因复盘），一个账号每月只生成一次 */
+async function tryMonthlySummary(){
+  try{
+    const d=new Date();
+    const lastDay=new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    if(d.getDate()!==lastDay) return;
+    const mkey=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    const { data: existed } = await sb.from("records").select("id").eq("user_id", me.id).eq("kind","月度总结").eq("title", mkey).limit(1);
+    if(existed && existed.length) return;
+    const ms = mkey+"-01", me2 = mkey+"-31";
+    const { data: rows } = await sb.from("checkins").select("date, project_id, meta").eq("user_id", me.id).gte("date", ms).lte("date", me2);
+    const mlist = rows||[];
+    const projCount={}, subjects={};
+    for(const r of mlist){
+      const p = myProjects.find(x=>x.id===r.project_id);
+      const nm = p?p.name:"其他";
+      projCount[nm]=(projCount[nm]||0)+1;
+      if(nm==="学习" && r.meta && r.meta.subject) subjects[r.meta.subject]=(subjects[r.meta.subject]||0)+1;
+    }
+    const totalMonth = mlist.length;
+    let prevTotal=0;
+    try{
+      const pm=new Date(d.getFullYear(), d.getMonth()-1, 1);
+      const ps=pm.getFullYear()+"-"+String(pm.getMonth()+1).padStart(2,"0")+"-01";
+      const pe=new Date(d.getFullYear(), d.getMonth(), 0).getDate();
+      const pek=pm.getFullYear()+"-"+String(pm.getMonth()+1).padStart(2,"0")+"-"+pe;
+      const { data: prows } = await sb.from("checkins").select("id").eq("user_id", me.id).gte("date", ps).lte("date", pek);
+      prevTotal=(prows||[]).length;
+    }catch(e){}
+    const { data: mis } = await sb.from("records").select("status").eq("user_id", me.id).eq("kind","漏卡");
+    const misList=mis||[];
+    const misCount={};
+    for(const x of misList){
+      const st = (x.status==="忙"||x.status==="累"||x.status==="生病"||x.status==="偷懒"||x.status==="忘了") ? x.status : "其他";
+      misCount[st]=(misCount[st]||0)+1;
+    }
+    const misTxt = Object.keys(misCount).length ? Object.entries(misCount).map(([k,v])=>`${k}×${v}`).join("、") : "暂无漏卡记录";
+    const diff=totalMonth-prevTotal;
+    const diffTxt=diff>0?`比上月多 ${diff} 次，进步明显👏`:(diff<0?`比上月少 ${-diff} 次，下个月冲回来💪`:"和上月持平，稳住✊");
+    const projTxt=Object.keys(projCount).length?Object.entries(projCount).map(([k,v])=>`${k} ${v}次`).join("、"):"本月还没打卡";
+    const subTxt=Object.keys(subjects).length?Object.entries(subjects).map(([k,v])=>`${k}×${v}`).join("、"):"—";
+    addCard(`
+      <div class="sum-card">
+        <div class="sum-title">📊 ${mkey} 月度总结</div>
+        <div class="row"><span>打卡总次数</span><b>${totalMonth} 次</b></div>
+        <div class="row"><span>项目分布</span><b>${projTxt}</b></div>
+        <div class="row"><span>学习科目</span><b>${subTxt}</b></div>
+        <div class="row"><span>漏卡原因</span><b>${misTxt}</b></div>
+      </div>`);
+    addMsg(pick([
+      () => `${mkey}的账结清了：${projTxt}。${diffTxt} 下个月我继续盯你😏`,
+      () => `月度盘点：${projTxt}，${diffTxt}。这个月漏卡主要是：${misTxt}。知道是谁挡路，下个月就好办多了💪`,
+      () => `${mkey}复盘来了：${projTxt}；漏卡原因：${misTxt}。${diffTxt}，别让我失望啊😉`,
+    ])(), "ai");
+    await sb.from("records").insert({ user_id: me.id, kind:"月度总结", title:mkey, status:String(totalMonth), detail:projTxt });
+  }catch(err){
+    console.error("monthly summary fail:", err);
+  }
 }
 /* ================= 启动 ================= */
 window.addEventListener("DOMContentLoaded", async ()=>{
