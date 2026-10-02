@@ -240,6 +240,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .rec-kind.k-学习{background:rgba(103,187,116,.16);color:#6FBF7F}
   .rec-kind.k-漏卡{background:rgba(226,109,92,.16);color:#E26D5C}
   .rec-kind.k-月度总结{background:rgba(78,168,222,.16);color:#3F96C8}
+  .rec-kind.k-打卡{background:rgba(78,168,222,.18);color:#2B7FB8}
   .rec-title{font-size:15.5px;font-weight:800;color:var(--txt)}
   .rec-status{font-size:12px;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--sub)}
   .rec-status.done{color:#6FBF7F;border-color:rgba(103,187,116,.4);background:rgba(103,187,116,.08)}
@@ -1446,6 +1447,11 @@ async function doCheckinRecord(project, meta){
     user_id: me.id, project_id: project.id, date: todayStr(), note:"", meta
   });
   project.today = (project.today||0)+1;
+  // 打卡同步写入「打卡记录」页，刷新后依然可见
+  const mm = meta||{};
+  const extra = mm.duration_min ? mm.duration_min+"分钟" : (mm.subject ? mm.subject : (mm.type ? mm.type : ""));
+  saveRecord("打卡", project.name, "完成", extra || "无");
+  saveChat("user", "打卡："+project.name + (extra ? "（"+extra+"）" : ""));
 }
 /* 撤回今天该项目的最近一次打卡（打错/想重新打卡时用） */
 async function undoCheckinToday(pid){
