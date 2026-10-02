@@ -1268,9 +1268,19 @@ function startCheckin(pid){
             await doCheckinRecord(this.project, { type:this.data.type });
             const plan = todayPlan();
             let praise;
-            if(plan && text && plan.name && this.data.type===plan.name) praise = `今天本来就是${plan.name}，按计划打卡，稳！👊`;
-            else if(plan) praise = `今天是${plan.name}，你练了${this.data.type}——这是主动加练还是计划后移？都行，练了就算数！🔥`;
-            else praise = `不是计划日还练了${this.data.type}，你这自律有点吓人🤯`;
+            if(plan && text && plan.name && this.data.type===plan.name) praise = pick([
+              `今天本来就是${plan.name}，按计划打卡，稳！👊`,
+              `${plan.name}日按计划完成，执行力在线💪`,
+              `该练${plan.name}就练${plan.name}，一点不拖泥带水✨`
+            ]);
+            else if(plan) praise = pick([
+              `今天是${plan.name}，你练了${this.data.type}——主动加练还是计划后移？都行，练了就算数！🔥`,
+              `${plan.name}日练了${this.data.type}，随机应变也是本事👍`
+            ]);
+            else praise = pick([
+              `不是计划日还练了${this.data.type}，你这自律有点吓人🤯`,
+              `休息日加练${this.data.type}？狠人👊`
+            ]);
             const streak = await calcStreak(this.project.id);
             addCard(`
               <div class="sum-card">
@@ -1311,7 +1321,7 @@ function startCheckin(pid){
                 <div class="row"><span>连续学习</span><b>${streak} 天</b></div>
                 <div class="row"><span>累计学习</span><b>${total} 次</b></div>
               </div>`);
-            const words = ["又是充实的一天，知识在悄悄涨📈","今天这波学习，值得给自己加个鸡腿🍗","学完就打卡，自律到没朋友👍"];
+            const words = ["又是充实的一天，知识在悄悄涨📈","今天这波学习，值得给自己加个鸡腿🍗","学完就打卡，自律到没朋友👍","专注完成，今天的学习状态在线😎","又记下一笔！坚持学下去，量变会带来质变📚","学习打卡到手，晚上可以安心休息了✨","好样的，这波学习给自己攒了点底气💪","收工！今天学到的都是自己的🏆"];
             addMsg(words[Math.floor(Math.random()*words.length)], "ai");
             convState=null;
             renderDailyTips();
@@ -1333,7 +1343,7 @@ function startCheckin(pid){
           <div class="row"><span>连续打卡</span><b>${streak} 天</b></div>
           <div class="row"><span>今日次数</span><b>${(p.today||0)+1} 次</b></div>
         </div>`);
-      const msgs=["坚持得漂亮💪","又完成一次，稳！👏","好样的，继续保持！✨"];
+      const msgs=["坚持得漂亮💪","又完成一次，稳！👏","好样的，继续保持！✨","打卡成功，习惯就是这么养成的🌟","又往前迈了一步，继续冲🏃","这波完成度可以，给自己点个赞👍","稳定输出，你就是自己的进度条😎","打卡到手，今天没白过✅"];
       addMsg(msgs[Math.floor(Math.random()*msgs.length)], "ai");
       renderDailyTips();
     })();
@@ -1360,6 +1370,7 @@ function renderTimer(){
   const ss = String(s%60).padStart(2,"0");
   $("timerDisplay").textContent = h+":"+m+":"+ss;
 }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 async function stopTimer(){
   clearInterval(timerInt);
   const sec = Math.floor((Date.now()-timerStartAt)/1000);
@@ -1383,7 +1394,14 @@ async function stopTimer(){
         <div class="row"><span>连续打卡</span><b>${streak} 天</b></div>
         <div class="row"><span>状态</span><b>${praise}</b></div>
       </div>`);
-    addMsg("计时到！今天的锻炼记上了，牛逼！🔥","ai");
+    addMsg(pick([
+      "计时到！今天的锻炼记上了，牛逼！🔥",
+      "到点收工！"+praise+" 已经给你记上了💪",
+      "叮！锻炼打卡完成，"+praise+"💪",
+      "计时结束，锻炼已记录。这波肌肉记忆又加深了一层⚡",
+      "收工！锻炼打卡成功——"+praise+"✨",
+      "时间到！锻炼记上了，今天也对自己够狠👍"
+    ]),"ai");
   } else {
     addCard(`
       <div class="sum-card">
@@ -1391,7 +1409,13 @@ async function stopTimer(){
         <div class="row"><span>时长</span><b>${minutes} 分钟</b></div>
         <div class="row"><span>连续学习</span><b>${streak} 天</b></div>
       </div>`);
-    addMsg("计时到！${minutes}分钟的学习稳稳拿下，专注力+1📈".replace("${minutes}",minutes),"ai");
+    addMsg(pick([
+      "计时到！"+minutes+"分钟的学习稳稳拿下，专注力+1📈",
+      "叮！"+minutes+"分钟学习打卡成功，知识+1、疲惫-1😎",
+      minutes+"分钟到点！学习已记上，脑子又装了一格📚",
+      "计时结束，"+minutes+"分钟专注达成，今天的自己又进一步✨",
+      "学习"+minutes+"分钟拿下！坚持打卡的人运气不会太差🍀"
+    ]),"ai");
   }
   renderDailyTips();
 }
