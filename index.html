@@ -170,18 +170,33 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .badge-view{padding:14px;overflow-y:auto;flex:1}
   .badge-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
   .badge{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 10px 14px;text-align:center}
-  .badge .b-icon{width:72px;height:72px;margin:0 auto 10px;border-radius:50%;background:radial-gradient(circle at 35% 28%,#9FD4F5,#4EA8DE 55%,#2B7FB8);position:relative;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(43,127,184,.28);color:#fff}
-  .badge .b-icon::before,.badge .b-icon::after{content:"";position:absolute;top:-6px;width:16px;height:11px;background:#E93F5D}
-  .badge .b-icon::before{left:10px;transform:skewX(-18deg);border-radius:2px 2px 6px 6px}
-  .badge .b-icon::after{right:10px;transform:skewX(18deg);border-radius:2px 2px 6px 6px}
-  .badge .b-icon span{font-size:26px;font-weight:900;letter-spacing:1px}
+  .badge .b-icon{width:76px;height:76px;margin:0 auto 10px;border-radius:50%;overflow:hidden;position:relative;box-shadow:0 6px 16px rgba(43,127,184,.22);cursor:pointer}
+  .badge .b-icon img{width:100%;height:100%;object-fit:cover;display:block}
+  .badge .b-icon .b-dim{filter:grayscale(.92) brightness(.78);opacity:.75}
+  .badge .b-icon .b-lock{position:absolute;right:-2px;bottom:-2px;font-size:15px;background:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.2)}
   .badge .b-name{font-size:14px;font-weight:800;color:var(--txt)}
   .badge .b-desc{font-size:11px;color:var(--dim);margin-top:3px}
   .badge .b-state{font-size:11.5px;font-weight:800;margin-top:8px;color:#6FBF7F}
-  .badge.lock .b-icon{background:linear-gradient(180deg,#D8E2EC,#B9C6D4);box-shadow:none;color:#8B9BB0}
-  .badge.lock .b-icon::before,.badge.lock .b-icon::after{background:#9FB0C2}
   .badge.lock .b-state{color:var(--dim)}
   @media (max-width:480px){.badge-grid{grid-template-columns:repeat(2,1fr)}}
+  /* 徽章3D预览弹窗 */
+  .bprev-mask{position:fixed;inset:0;z-index:90;background:rgba(10,20,35,.55);display:flex;align-items:center;justify-content:center}
+  .bprev-stage{width:min(340px,84vw);text-align:center}
+  .bprev-scene{perspective:900px}
+  .bprev-card{position:relative;width:min(300px,78vw);aspect-ratio:1;margin:0 auto;transform-style:preserve-3d;transition:transform .95s cubic-bezier(.4,.2,.2,1);cursor:grab}
+  .bprev-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:18px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+  .bprev-face.front{background:radial-gradient(circle at 35% 25%,#EAF6FF,#BFE3F7 60%,#9CCFEA);border:1px solid rgba(255,255,255,.6)}
+  .bprev-face.front img{width:100%;height:100%;object-fit:cover;display:block}
+  .bprev-name{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:14px;font-weight:900;color:#2B7FB8;background:rgba(255,255,255,.82);padding:8px 0;letter-spacing:.05em}
+  .bprev-face.back{transform:rotateY(180deg);background:linear-gradient(160deg,#2B7FB8,#4EA8DE 70%,#7FC4EA);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+  .bprev-face.back .bb-ava{width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,255,255,.7);margin-bottom:12px;object-fit:cover}
+  .bb-title{font-size:20px;font-weight:900;letter-spacing:.06em}
+  .bb-date{font-size:13.5px;margin-top:10px;opacity:.95;font-weight:700}
+  .bb-line{font-size:12.5px;margin-top:12px;opacity:.85;line-height:1.5}
+  .bprev-hint{color:#CDE6F7;font-size:12px;margin:16px 0 10px}
+  .bprev-ops{display:flex;gap:10px;justify-content:center}
+  .bprev-ops button{flex:1;max-width:120px;padding:11px 0;border:0;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;background:#fff;color:#2B7FB8}
+  .bprev-ops button:active{transform:scale(.96)}
   .sum-card .sum-title{font-weight:800;color:var(--ok);margin-bottom:6px;font-size:14px}
   .sum-card .row{display:flex;justify-content:space-between;padding:3px 0;color:var(--sub)}
   .sum-card .row b{color:var(--txt)}
@@ -417,6 +432,18 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <div id="recordsView" class="records hidden"></div>
     <div id="statsView" class="stats hidden"></div>
     <div id="badgeView" class="badge-view hidden"></div>
+    <div id="badgePreview" class="bprev-mask hidden">
+      <div class="bprev-stage">
+        <div class="bprev-scene">
+          <div class="bprev-card" id="bprevCard">
+            <div class="bprev-face front"><img id="bprevImg" alt=""><div class="bprev-name" id="bprevName"></div></div>
+            <div class="bprev-face back"><img class="bb-ava" src="https://aka.doubaocdn.com/s/4VugrO5Q6k"><div class="bb-title" id="bbTitle"></div><div class="bb-date" id="bbDate"></div><div class="bb-line" id="bbLine"></div></div>
+          </div>
+        </div>
+        <div class="bprev-hint">按住拖动可旋转 · 点“翻面”看背面</div>
+        <div class="bprev-ops"><button onclick="toggleBadgeFlip()">翻面</button><button onclick="closeBadgePreview()">关闭</button></div>
+      </div>
+    </div>
   </div>
 
   <!-- 管理视图 -->
@@ -743,12 +770,12 @@ function addMsg(text, who){
   return row;
 }
 const BADGES=[
-  {d:1, name:"首日徽章", desc:"完成第 1 次打卡"},
-  {d:3, name:"三日徽章", desc:"连续打卡 3 天"},
-  {d:7, name:"七日徽章", desc:"连续打卡 7 天"},
-  {d:15, name:"半月徽章", desc:"连续打卡 15 天"},
-  {d:30, name:"月徽章", desc:"连续打卡 30 天"},
-  {d:100, name:"百日徽章", desc:"累计打卡 100 天", isTotal:true}
+  {d:1, name:"首日徽章", desc:"完成第 1 次打卡", img:"https://aka.doubaocdn.com/s/1hEUumnYiF", line:"开始就是胜利，搭搭陪你起步！"},
+  {d:3, name:"三日徽章", desc:"连续打卡 3 天", img:"https://aka.doubaocdn.com/s/ZHL3FMNVU9", line:"三天连击，状态起来了！"},
+  {d:7, name:"七日徽章", desc:"连续打卡 7 天", img:"https://aka.doubaocdn.com/s/i17VQPY5sL", line:"坚持一周，习惯在发芽！"},
+  {d:15, name:"十五日徽章", desc:"连续打卡 15 天", img:"https://aka.doubaocdn.com/s/0PjOzwTD2v", line:"半个月了，你已经很稳了！"},
+  {d:30, name:"三十日徽章", desc:"连续打卡 30 天", img:"https://aka.doubaocdn.com/s/AQr6WGov7h", line:"满月打卡，铁打的自律！"},
+  {d:100, name:"百日徽章", desc:"累计打卡 100 天", isTotal:true, img:"https://aka.doubaocdn.com/s/pLnPSvhQlI", line:"百日修炼，搭搭为你骄傲！"}
 ];
 function nextBadge(streak, total){
   for(const b of BADGES){
@@ -757,12 +784,26 @@ function nextBadge(streak, total){
   }
   return null;
 }
+function diffDays(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 async function calcBadgeStats(){
   const { data } = await sb.from("checkins").select("date").eq("user_id", me.id);
-  const dates = new Set((data||[]).map(d=>d.date));
+  const dateList = (data||[]).map(d=>d.date).filter(Boolean);
+  const dates = new Set(dateList);
   let streak=0; const d=new Date();
   while(dates.has(todayStr(d))){ streak++; d.setDate(d.getDate()-1); }
-  return { streak, total: dates.size };
+  const sorted=[...dates].sort();
+  const unlock={};
+  let curStreak=0, curTotal=0, prev=null;
+  for(const ds of sorted){
+    curTotal++;
+    curStreak = (prev && diffDays(prev, ds)===1) ? curStreak+1 : 1;
+    prev = ds;
+    for(const b of BADGES){
+      if(unlock[b.d]) continue;
+      if(b.isTotal ? curTotal>=b.d : curStreak>=b.d) unlock[b.d]=ds;
+    }
+  }
+  return { streak, total: dates.size, unlock };
 }
 /* B模板打卡成功卡片 */
 function buildCheckinCard(o){
@@ -2150,21 +2191,64 @@ async function renderBadgeWall(){
     const got = BADGES.filter(b=> b.isTotal ? total>=b.d : streak>=b.d).length;
     html += `<div class="rec-head">共 <b>6</b> 枚徽章 · 已点亮 <b>${got}</b> 枚${got===6?" · 全收集！🎉":""}</div>`;
     html += `<div class="badge-grid">`;
-    for(const b of BADGES){
+    BADGES.forEach((b,i)=>{
       const unlocked = b.isTotal ? total>=b.d : streak>=b.d;
       const cur = b.isTotal ? total : streak;
       const gap = unlocked ? 0 : Math.max(1, b.d-cur);
+      const click = unlocked ? `onclick="openBadgePreview(${i})"` : `onclick="alert('还差 ${gap} 天解锁「${b.name}」，继续加油！')"`;
       html += `<div class="badge ${unlocked?"":"lock"}">
-        <div class="b-icon"><span>${b.d}</span></div>
+        <div class="b-icon" ${click}>${unlocked?`<img src="${b.img}" alt="${b.name}">`:`<img src="${b.img}" class="b-dim" alt="${b.name}"><span class="b-lock">🔒</span>`}</div>
         <div class="b-name">${b.name}</div>
         <div class="b-desc">${b.desc}</div>
-        <div class="b-state">${unlocked?"<b>已点亮</b>":`还差 ${gap} 天`}</div>
+        <div class="b-state">${unlocked?"<b>已点亮 · 点击查看</b>":`还差 ${gap} 天`}</div>
       </div>`;
-    }
+    });
     html += `</div>`;
   }catch(e){ html += `<div class="rec-empty">徽章计算失败，稍后再试</div>`; }
   box.innerHTML = html;
 }
+/* 徽章3D预览：放大 + 拖拽倾斜 + 翻面看背面(解锁日期) */
+let bpDrag=false, bpSX=0, bpSY=0, bpRX=0, bpRY=0;
+function applyBpTilt(){
+  const c=$("bprevCard");
+  const flip = c.classList.contains("flipped") ? 180 : 0;
+  c.style.transform = `rotateX(${bpRX}deg) rotateY(${bpRY+flip}deg)`;
+}
+function openBadgePreview(i){
+  const b = BADGES[i]; if(!b) return;
+  const st = window.__badgeUnlock || {};
+  const date = st[b.d];
+  $("bprevImg").src = b.img;
+  $("bprevName").textContent = b.name;
+  $("bbTitle").textContent = b.name;
+  const pp = date ? date.split("-") : null;
+  $("bbDate").textContent = pp ? `${pp[0]}年${(+pp[1])}月${(+pp[2])}日 解锁` : "已解锁";
+  $("bbLine").textContent = b.line || "";
+  $("bprevCard").classList.remove("flipped");
+  bpRX=0; bpRY=0; applyBpTilt();
+  $("badgePreview").classList.remove("hidden");
+}
+function closeBadgePreview(){
+  $("badgePreview").classList.add("hidden");
+  $("bprevCard").classList.remove("flipped");
+  bpRX=0; bpRY=0; applyBpTilt();
+}
+function toggleBadgeFlip(){
+  const c=$("bprevCard");
+  c.classList.toggle("flipped");
+  applyBpTilt();
+}
+document.addEventListener("pointerdown", e=>{
+  if(e.target.closest(".bprev-mask")){ bpDrag=true; bpSX=e.clientX; bpSY=e.clientY; }
+});
+document.addEventListener("pointermove", e=>{
+  if(!bpDrag) return;
+  const dx=e.clientX-bpSX, dy=e.clientY-bpSY;
+  bpRX=Math.max(-30,Math.min(30,-dy*.5));
+  bpRY=Math.max(-40,Math.min(40,dx*.5));
+  applyBpTilt();
+});
+document.addEventListener("pointerup", ()=>{ bpDrag=false; });
 async function mineRecords(){
   $("mineHome").classList.add("hidden");
   $("statsView").classList.add("hidden");
