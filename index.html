@@ -309,6 +309,38 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .rec-detail{font-size:13px;color:var(--sub);margin-top:6px}
   .rec-time{font-size:11px;color:var(--dim);margin-top:6px}
   .rec-empty{padding:50px 20px;text-align:center;color:var(--dim);font-size:13.5px;border:1px dashed var(--line);border-radius:12px}
+
+  /* 打卡日历 */
+  .cal-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .cal-head b{font-size:15px;color:var(--txt)}
+  .cal-nav{display:flex;gap:8px}
+  .cal-nav button{background:var(--bg2);border:1px solid var(--line);color:var(--acc2);border-radius:8px;width:30px;height:30px;font-size:16px;cursor:pointer;line-height:1}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+  .cal-dow{text-align:center;font-size:11.5px;color:var(--dim);padding:4px 0;font-weight:700}
+  .cal-cell{min-height:54px;border-radius:10px;background:var(--bg2);border:1px solid transparent;padding:5px;display:flex;flex-direction:column;gap:3px;position:relative}
+  .cal-cell.blank{background:transparent;border:0;min-height:0}
+  .cal-cell .d{font-size:12px;font-weight:700;color:var(--sub)}
+  .cal-cell.future{opacity:.4}
+  .cal-cell.today{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+  .cal-cell.has{background:rgba(78,168,222,.12);border-color:rgba(78,168,222,.35);cursor:pointer}
+  .cal-cell.miss{cursor:pointer;border-style:dashed;border-color:rgba(224,166,59,.55);background:rgba(224,166,59,.07)}
+  .cal-cell.has:active,.cal-cell.miss:active{transform:scale(.97)}
+  .cal-tag{font-size:10px;font-weight:700;padding:1px 5px;border-radius:8px;background:var(--acc);color:#fff;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cal-tag.t-learn{background:#6FBF7F}
+  .cal-cell .addhint{position:absolute;right:4px;bottom:3px;font-size:11px;color:var(--warn);font-weight:800}
+  .cal-legend{display:flex;gap:14px;margin-top:12px;font-size:11.5px;color:var(--sub);flex-wrap:wrap}
+  .cal-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+  /* 补卡面板 */
+  .bf-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .bf-proj{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:13.5px;font-weight:700;color:var(--txt);cursor:pointer}
+  .bf-proj.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+  .bf-note{width:100%;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--txt);outline:none;box-sizing:border-box}
+  .bf-note:focus{border-color:var(--acc)}
+  .bf-confirm{width:100%;background:var(--acc);color:#fff;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;cursor:pointer;margin-top:10px}
+  .bf-confirm:active{transform:scale(.98)}
+  .bf-day{font-size:12.5px;color:var(--dim);margin:2px 0 6px}
+  .bf-det{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:13.5px;color:var(--txt)}
   .rec-saved{font-size:12px;color:#6FBF7F;background:rgba(103,187,116,.08);border:1px solid rgba(103,187,116,.3);border-radius:20px;padding:4px 12px;width:fit-content;align-self:flex-start;margin-top:2px}
 
   /* 对话历史面板 */
@@ -1728,13 +1760,16 @@ async function aiChat(t){
     const amAll = [...reply.matchAll(actRe)];
     const moveRe = /\[移:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\]/g;
     const mvAll = [...reply.matchAll(moveRe)];
-    let clean = reply.replace(/\[[记改动静]:[^\]\n]*\]/g, "").trim();
+    const bfRe = /\[补:([^|\]]+)\|([^|\]]+)\|([^\]]*)\]/g;
+    const bfAll = [...reply.matchAll(bfRe)];
+    let clean = reply.replace(/\[[记改动静补]:[^\]\n]*\]/g, "").trim();
     const lb = loading.querySelector(".msg");
     if(lb) lb.innerHTML = `<span class="who">搭搭</span>` + attachSticker(esc(clean));
     for(const m of rmAll){ await saveRecord(m[1].trim(), m[2].trim(), m[3].trim(), m[4].trim()); }
     for(const m of pmAll){ await applyAiPlanChange(m[1].trim(), m[2].trim(), m[3].trim(), m[4].trim()); }
     for(const m of amAll){ await applyAiActionChange(m[1].trim(), m[2].trim(), m[3].trim(), m[4].trim(), m[5].trim(), m[6].trim()); }
     for(const m of mvAll){ await applyAiMove(m[1].trim(), m[2].trim(), m[3].trim()); }
+    for(const m of bfAll){ await applyAiBackfill(m[1].trim(), m[2].trim(), m[3].trim()); }
     saveChat("assistant", clean);
   }catch(err){
     console.error("ai chat fallback:", err);
@@ -1794,7 +1829,7 @@ function aiSystem(){
           planInfo + "。" +
           (userPlans ? "【用户自定义课表】\n" + userPlans + "\n（用户问某个项目的安排时，按该项目课表回答，没有设置的那天不要编造动作）\n" : "") +
           "【用户最近7天真实打卡记录】\n" + (aiCtxCache || "（暂无）") + "\n" +
-          "规则：① 用户问「昨天练了什么」「最近打卡了啥」「我打卡情况怎么样」等涉及打卡记录的问题时，必须以上面的真实打卡记录为准如实回答，记录里没有的就是没有，绝对不能编造；② 用户问「今天/该练什么」「练哪个动作」「一组多少」时，结合今天的课表和动作明细给出具体动作和组数建议；③ 用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。④ 用户要求「修改/调整/设置/更改 某个打卡项目的课表或当天计划」（例如：把学习项目周一到周六都改成口腔科、某天改成休息、删除某天的安排、给某天加动作等）时，你必须在回复的最末尾另起一行，单独输出这条标记：[改:项目名|周几|标题|动作]。项目名=用户说的项目（如「学习」「锻炼」，必须是上面【用户自定义课表】里出现的项目名，找不到就用用户说的名字）；周几=要改的天，可以写「周一」「周六」或「周一到周五」「周一到周六」「1-6」「周一、周三」，删除某天时也要把该天写出来；标题=当天计划的新名称（如 口腔科、推日、休息），如果用户要删除某天的安排，标题填「删除」；动作=该天的动作明细，如「仰卧起坐3组15个、俯卧撑4组12个」，用户没提动作就填「无」。如果用户要求把某一整天的计划整体移动/挪/搬到另一天（如「把周四的拉日整体移到周三」「把学习挪到周六」），必须在回复的最末尾另起一行，单独输出这条标记：[移:项目名|原天|目标天]。项目名=用户说的项目；原天=计划现在所在的天（如「周四」）；目标天=要移到的天（如「周三」）。只输出这一个 [移:] 标记，绝对不要输出 [改:] 或 [动:]。输出 [改:] 标记后，正文里告诉用户已经改好了。⑤ 用户要求「修改/设计/增加/删除 某一天里的某个动作」时（例如：周一的俯卧撑两组改成三组；帮我在周三加仰卧起坐三组一组十个；把周二的深蹲删掉），你必须先根据【用户自定义课表】判断该天有没有这个动作，然后在回复的最末尾另起一行，单独输出这条标记：[动:项目名|周几|动作名|组数|次数|操作]。项目名=用户说的项目；周几=要改的天（支持「周一」或「周一到周五」这种范围，多个天会应用到每一天）；动作名=要处理的动作名称；组数=几组（用数字，如 3）；次数=每组几个或次数文字（如 15、每侧15个）；操作=「改」（修改该天已有动作的组数/次数，用户没提的那项就填课表里的原值）、「加」（新增该动作，组数次数按用户说的）、「删」（删除该动作，组数次数填「无」）。输出 [动:] 标记后，正文里告诉用户改好了。除了①②③④⑤五种情况，其他任何时候绝对不要输出 [记:] [改:] 或 [动:] 标记。" +
+          "规则：① 用户问「昨天练了什么」「最近打卡了啥」「我打卡情况怎么样」等涉及打卡记录的问题时，必须以上面的真实打卡记录为准如实回答，记录里没有的就是没有，绝对不能编造；② 用户问「今天/该练什么」「练哪个动作」「一组多少」时，结合今天的课表和动作明细给出具体动作和组数建议；③ 用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。④ 用户要求「修改/调整/设置/更改 某个打卡项目的课表或当天计划」（例如：把学习项目周一到周六都改成口腔科、某天改成休息、删除某天的安排、给某天加动作等）时，你必须在回复的最末尾另起一行，单独输出这条标记：[改:项目名|周几|标题|动作]。项目名=用户说的项目（如「学习」「锻炼」，必须是上面【用户自定义课表】里出现的项目名，找不到就用用户说的名字）；周几=要改的天，可以写「周一」「周六」或「周一到周五」「周一到周六」「1-6」「周一、周三」，删除某天时也要把该天写出来；标题=当天计划的新名称（如 口腔科、推日、休息），如果用户要删除某天的安排，标题填「删除」；动作=该天的动作明细，如「仰卧起坐3组15个、俯卧撑4组12个」，用户没提动作就填「无」。如果用户要求把某一整天的计划整体移动/挪/搬到另一天（如「把周四的拉日整体移到周三」「把学习挪到周六」），必须在回复的最末尾另起一行，单独输出这条标记：[移:项目名|原天|目标天]。项目名=用户说的项目；原天=计划现在所在的天（如「周四」）；目标天=要移到的天（如「周三」）。只输出这一个 [移:] 标记，绝对不要输出 [改:] 或 [动:]。输出 [改:] 标记后，正文里告诉用户已经改好了。⑤ 用户要求「修改/设计/增加/删除 某一天里的某个动作」时（例如：周一的俯卧撑两组改成三组；帮我在周三加仰卧起坐三组一组十个；把周二的深蹲删掉），你必须先根据【用户自定义课表】判断该天有没有这个动作，然后在回复的最末尾另起一行，单独输出这条标记：[动:项目名|周几|动作名|组数|次数|操作]。项目名=用户说的项目；周几=要改的天（支持「周一」或「周一到周五」这种范围，多个天会应用到每一天）；动作名=要处理的动作名称；组数=几组（用数字，如 3）；次数=每组几个或次数文字（如 15、每侧15个）；操作=「改」（修改该天已有动作的组数/次数，用户没提的那项就填课表里的原值）、「加」（新增该动作，组数次数按用户说的）、「删」（删除该动作，组数次数填「无」）。输出 [动:] 标记后，正文里告诉用户改好了。⑥ 用户说「补卡/补打卡/哪天忘了打卡/把哪天的卡补上」（例如「昨天忘了打卡，帮我补个锻炼的卡」「补前天学习的卡」）时，必须在回复的最末尾另起一行，单独输出这条标记：[补:项目名|YYYY-MM-DD|备注]。项目名=用户要补的打卡项目名（从【用户自定义课表】里找，找不到就用用户说的名字）；日期=要补的具体日期，格式必须是 YYYY-MM-DD，把用户说的「昨天/前天/大前天/10月8号」等推算成具体日期（今天是 " + todayStr() + "）；备注=用户说的补充细节，没有就写「无」。输出后正文里告诉用户补好了。除了①②③④⑤⑥六种情况，其他任何时候绝对不要输出 [记:] [改:] [动:] [移:] 或 [补:] 标记。" +
           "回复要口语化、简短（两三句内）、像朋友聊天，多鼓励，少说教。可以适当调侃用户偷懒。";
   return s;
 }
@@ -2289,39 +2324,159 @@ function uploadAvatar(input){
 }
 
 /* ================= 训练/学习记录 ================= */
+let calYear = null, calMonth = null;
 async function loadRecords(){
   const box=$("recordsView");
   if(!me){ box.innerHTML=""; return; }
   const backBtn = `<div class="back-row"><button class="mini-btn" onclick="showMineHome()">← 返回我的</button></div>`;
-  box.innerHTML = backBtn + `<div style="text-align:center;color:var(--dim);padding:30px 0">正在翻记录…</div>`;
-  const { data: rows, error } = await sb.from("records")
-    .select("kind,title,status,detail,created_at")
+  box.innerHTML = backBtn + `<div style="text-align:center;color:var(--dim);padding:30px 0">正在翻日历…</div>`;
+  if(!myProjects.length) await loadProjects();
+  const now = new Date();
+  if(!calYear){ calYear = now.getFullYear(); calMonth = now.getMonth(); }
+  const from = new Date(calYear, calMonth-1, 26);
+  const to = new Date(calYear, calMonth+1, 5);
+  const { data, error } = await sb.from("checkins")
+    .select("date, project_id, meta")
     .eq("user_id", me.id)
-    .order("created_at", { ascending:false })
-    .limit(100);
-  if(error){ box.innerHTML = backBtn + `<div class="rec-empty">记录读取失败，稍后再试试</div>`; return; }
-  const list = rows||[];
-  if(!list.length){
-    box.innerHTML = backBtn + `
-      <div class="rec-head">还没有记录。跟搭子聊天时提到你锻炼/学习的情况（比如"今天臂力棒第二组没做完"），搭子会自动帮你记下来。</div>
-      <div class="rec-empty">📭 暂无记录</div>`;
-    return;
+    .gte("date", todayStr(from)).lte("date", todayStr(to));
+  if(error){ box.innerHTML = backBtn + `<div class="rec-empty">日历读取失败，稍后再试试</div>`; return; }
+  const nameMap = {}; myProjects.forEach(p=>nameMap[p.id]=p.name);
+  const byDate = {};
+  for(const r of (data||[])){ (byDate[r.date]=byDate[r.date]||[]).push(nameMap[r.project_id]||"项目"); }
+  const today = todayStr();
+  const firstDow = (new Date(calYear, calMonth, 1).getDay()+6)%7; // 周一开头
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  let cells = "";
+  for(let i=0;i<firstDow;i++) cells += `<div class="cal-cell blank"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const ds = calYear+"-"+String(calMonth+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+    const tags = byDate[ds]||[];
+    const isToday = ds===today, isFuture = ds>today;
+    const cls = ["cal-cell"];
+    if(tags.length) cls.push("has"); else if(!isFuture) cls.push("miss");
+    if(isToday) cls.push("today");
+    if(isFuture) cls.push("future");
+    let inner = `<div class="d">${d}${isToday?" ·":""}</div>`;
+    const uniq = [...new Set(tags)].slice(0,2);
+    inner += uniq.map((t,i)=>`<div class="cal-tag${i===1?" t-learn":""}">${esc(t)}</div>`).join("");
+    if(!tags.length && !isFuture) inner += `<div class="addhint">补</div>`;
+    const click = tags.length ? ` onclick="openDayDetail('${ds}')"` : (!isFuture ? ` onclick="openBackfillPanel('${ds}')"` : "");
+    cells += `<div class="${cls.join(" ")}"${click}>${inner}</div>`;
   }
-  box.innerHTML = backBtn + `<div class="rec-head">共 <b>${list.length}</b> 条记录，跟搭子聊天时它会自动记下你提到的训练/学习情况</div>` +
-    list.map(r=>{
-      const d = new Date(r.created_at);
-      const ts = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-      const stCls = r.status==="完成" ? "done" : (r.status==="未完成" ? "miss" : "");
-      return `<div class="rec-card">
-        <div class="rec-top">
-          <span class="rec-kind k-${r.kind||"锻炼"}">${esc(r.kind||"锻炼")}</span>
-          <span class="rec-title">${esc(r.title||"")}</span>
-          ${r.status && r.status!=="无" ? `<span class="rec-status ${stCls}">${esc(r.status)}</span>` : ""}
-        </div>
-        ${r.detail && r.detail!=="无" ? `<div class="rec-detail">${esc(r.detail)}</div>` : ""}
-        <div class="rec-time">${ts}</div>
-      </div>`;
-    }).join("");
+  box.innerHTML = backBtn + `
+    <div class="cal-wrap">
+      <div class="cal-head">
+        <b>${calYear}年 ${calMonth+1}月</b>
+        <div class="cal-nav"><button onclick="calNav(-1)">‹</button><button onclick="calNav(1)">›</button></div>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-dow">一</div><div class="cal-dow">二</div><div class="cal-dow">三</div><div class="cal-dow">四</div><div class="cal-dow">五</div><div class="cal-dow">六</div><div class="cal-dow">日</div>
+        ${cells}
+      </div>
+      <div class="cal-legend">
+        <span><i style="background:rgba(78,168,222,.25);border:1px solid rgba(78,168,222,.5)"></i>已打卡</span>
+        <span><i style="background:rgba(224,166,59,.12);border:1px dashed rgba(224,166,59,.6)"></i>缺卡点格子补卡</span>
+        <span><i style="background:var(--bg2);border:1px solid var(--acc)"></i>今天</span>
+      </div>
+    </div>
+    <div class="rec-head">💡 点带「补」的格子，直接给那天补打卡；点有打卡的格子看当天明细。</div>`;
+  await appendNoteList(box);
+}
+function calNav(delta){
+  calMonth += delta;
+  if(calMonth<0){ calMonth=11; calYear--; }
+  if(calMonth>11){ calMonth=0; calYear++; }
+  loadRecords();
+}
+/* ===== 补卡写库（日历点格子 / AI对话补卡 共用） ===== */
+async function doBackfill(dateStr, pid, note){
+  const p = myProjects.find(x=>x.id===pid);
+  await sb.from("checkins").insert({ user_id: me.id, project_id: pid, date: dateStr, note: note||"", meta:{ backfill:true } });
+  saveRecord("打卡", p?p.name:"补卡", "完成", "补卡："+dateStr+(note?"（"+note+"）":""));
+}
+let backfillDate = null;
+function openBackfillPanel(dateStr){
+  backfillDate = dateStr;
+  const dayNames = ["周日","周一","周二","周三","周四","周五","周六"];
+  const d = new Date(dateStr+"T00:00:00");
+  const opts = myProjects.map(p=>`<button class="bf-proj" data-pid="${p.id}" onclick="this.parentNode.querySelectorAll('.bf-proj').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${esc(p.name)}</button>`).join("");
+  const mask = document.createElement("div");
+  mask.className = "panel-mask";
+  mask.id = "bfMask";
+  mask.innerHTML = `<div class="panel">
+    <h3>补打卡<span class="x" onclick="closeBackfillPanel()">×</span></h3>
+    <div class="bf-day">${dateStr} ${dayNames[d.getDay()]} · 选个项目补上这天的卡</div>
+    <div class="bf-row">${opts || '<div style="color:var(--dim);font-size:13px">还没有项目，先去「项目」里建一个吧</div>'}</div>
+    <input class="bf-note" id="bfNote" placeholder="备注（可选，比如：练了40分钟）">
+    <button class="bf-confirm" onclick="confirmBackfill()">✔ 补卡</button>
+  </div>`;
+  mask.addEventListener("click", e=>{ if(e.target===mask) closeBackfillPanel(); });
+  document.body.appendChild(mask);
+}
+function closeBackfillPanel(){ const m=$("bfMask"); if(m) m.remove(); }
+async function confirmBackfill(){
+  const on = document.querySelector("#bfMask .bf-proj.on");
+  if(!on){ alert("先选一个项目"); return; }
+  const pid = on.getAttribute("data-pid");
+  const note = $("bfNote").value.trim();
+  try{
+    await doBackfill(backfillDate, pid, note);
+    closeBackfillPanel();
+    await loadRecords();
+  }catch(e){ alert("补卡失败，稍后再试"); }
+}
+/* 当天明细（点已打卡的格子） */
+async function openDayDetail(dateStr){
+  const { data } = await sb.from("checkins").select("project_id, note").eq("user_id",me.id).eq("date",dateStr).order("created_at",{ascending:false});
+  const nameMap = {}; myProjects.forEach(p=>nameMap[p.id]=p.name);
+  const list = (data||[]).map(r=>`<div class="bf-det">✅ ${esc(nameMap[r.project_id]||"项目")}${r.note?" · "+esc(r.note):""}</div>`).join("");
+  const today = todayStr();
+  const canAdd = dateStr <= today;
+  const mask = document.createElement("div");
+  mask.className = "panel-mask";
+  mask.id = "bfMask";
+  mask.innerHTML = `<div class="panel">
+    <h3>${dateStr} 打卡明细<span class="x" onclick="closeBackfillPanel()">×</span></h3>
+    ${list || '<div class="bf-det" style="color:var(--dim)">这天没有记录</div>'}
+    ${canAdd ? `<button class="bf-confirm" onclick="closeBackfillPanel();openBackfillPanel('${dateStr}')">＋ 再补一条打卡</button>` : ""}
+  </div>`;
+  mask.addEventListener("click", e=>{ if(e.target===mask) closeBackfillPanel(); });
+  document.body.appendChild(mask);
+}
+/* AI 对话补卡：[补:项目名|YYYY-MM-DD|备注] */
+async function applyAiBackfill(projName, dateStr, note){
+  const p = myProjects.find(x=>x.name===projName) || myProjects.find(x=>projName && (x.name.indexOf(projName)>=0 || projName.indexOf(x.name)>=0));
+  if(!p){ addMsg("没找到叫「"+projName+"」的项目，补不了😢 先去「项目」里建一个再来跟我说。","ai"); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)){ addMsg("搭搭没搞清楚要补哪一天（"+dateStr+"），你说一下具体日期？比如「补昨天锻炼的卡」。","ai"); return; }
+  if(dateStr > todayStr()){ addMsg("那可是未来呀，卡先欠着，到那天我再陪你打😉","ai"); return; }
+  try{
+    await doBackfill(dateStr, p.id, (note && note!=="无") ? note : "");
+    addMsg("补好啦！"+dateStr+" 的「"+p.name+"」卡已经补上 ✅ 去「我的 → 打卡记录」日历里能看到。","ai");
+  }catch(e){
+    addMsg("补卡的时候出了点岔子（"+(e.message||"网络问题")+"），你在日历上点那天的格子手动补一下吧。","ai");
+  }
+}
+/* 下面保留：跟搭搭聊过的备注记录 */
+async function appendNoteList(box){
+  const { data } = await sb.from("records").select("kind,title,status,detail,created_at").eq("user_id", me.id).order("created_at", { ascending:false }).limit(30);
+  const list = data||[];
+  if(!list.length) return;
+  let html = `<div class="rec-head" style="margin-top:14px">跟搭搭聊过的记录（最近 ${list.length} 条）</div>`;
+  for(const r of list){
+    const d = new Date(r.created_at);
+    const ts = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    const stCls = r.status==="完成" ? "done" : (r.status==="未完成" ? "miss" : "");
+    html += `<div class="rec-card">
+      <div class="rec-top">
+        <span class="rec-kind k-${r.kind||"锻炼"}">${esc(r.kind||"锻炼")}</span>
+        <span class="rec-title">${esc(r.title||"")}</span>
+        ${r.status && r.status!=="无" ? `<span class="rec-status ${stCls}">${esc(r.status)}</span>` : ""}
+      </div>
+      ${r.detail && r.detail!=="无" ? `<div class="rec-detail">${esc(r.detail)}</div>` : ""}
+      <div class="rec-time">${ts}</div>
+    </div>`;
+  }
+  box.insertAdjacentHTML("beforeend", html);
 }
 
 async function saveRecord(kind, title, status, detail){
