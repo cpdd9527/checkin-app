@@ -595,7 +595,13 @@ const SUPABASE_ANON_KEY = "sb_publishable_awgAgTE5T8B7nhMCrxomrw_bE1e0Kfu";
 
 let sb = null;
 try{
-  if(SUPABASE_URL.startsWith("http") && window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // 给所有 Supabase 请求加 10 秒超时：网络卡时快速失败重试，不无限挂起
+  const tFetch = (url, opts)=>{
+    const ctl = new AbortController();
+    const t = setTimeout(()=>ctl.abort(), 10000);
+    return fetch(url, Object.assign({}, opts||{}, { signal: ctl.signal })).finally(()=>clearTimeout(t));
+  };
+  if(SUPABASE_URL.startsWith("http") && window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: tFetch } });
 }catch(e){ sb = null; console.error("supabase init failed", e); }
 
 /* 全局错误提示：任何报错都弹出来，不会"点了没反应" */
@@ -819,10 +825,26 @@ async function loadApp(){
     const w = cacheGet("ck_w_"+me.id);
     if(w && typeof w==="object") plansByProj = w;
   }catch(e){}
-  // 后台静默刷新：不阻塞界面，失败自动重试，成功后更新缓存
+  // 无聊天缓存时先放"正在同步"占位，避免看到空框以为数据丢了
+  try{
+    const cachedChat = cacheGet("ck_chat_"+me.id);
+    if(!(Array.isArray(cachedChat) && cachedChat.length)){
+      const cb=$("chatBox");
+      if(cb) cb.innerHTML = `<div class="msg ai"><span class="who">搭搭</span>正在同步你的数据…</div>`;
+    }
+  }catch(e){}
+  // 后台静默刷新：不阻塞界面，失败自动重试，成功后更新缓存并播开场白
   (async()=>{
-    try{ await loadProjects(true); }catch(e){ console.warn("projects refresh fail", e); }
-    try{ await loadAllPlans(); }catch(e){ console.warn("plans refresh fail", e); }
+    let pOk=false, wOk=false;
+    try{ await loadProjects(true); pOk=true; }catch(e){ console.warn("projects refresh fail", e); }
+    try{ await loadAllPlans(); wOk=true; }catch(e){ console.warn("plans refresh fail", e); }
+    if(!pOk && !myProjects.length){
+      // 网络失败且无缓存：明确告诉用户数据没丢，避免误以为记录被清空
+      const cb=$("chatBox");
+      if(cb) cb.innerHTML = `<div class="msg ai"><span class="who">搭搭</span>网络没连上，你的记录都好好存在云端，一条没丢。等网络好一点，刷新一下页面就能看到了～`;
+      try{ renderDailyTips(); }catch(e){}
+      return;
+    }
     try{ await bootChat(); }catch(e){ console.error("boot fail", e); }
   })();
 }
