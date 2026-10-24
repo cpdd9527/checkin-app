@@ -595,10 +595,10 @@ const SUPABASE_ANON_KEY = "sb_publishable_awgAgTE5T8B7nhMCrxomrw_bE1e0Kfu";
 
 let sb = null;
 try{
-  // 给所有 Supabase 请求加 10 秒超时：网络卡时快速失败重试，不无限挂起
+  // 给所有 Supabase 请求加 25 秒超时：网络卡时快速失败重试，不无限挂起（国内访问国外服务器较慢，阈值取宽些）
   const tFetch = (url, opts)=>{
     const ctl = new AbortController();
-    const t = setTimeout(()=>ctl.abort(), 10000);
+    const t = setTimeout(()=>ctl.abort(), 25000);
     return fetch(url, Object.assign({}, opts||{}, { signal: ctl.signal })).finally(()=>clearTimeout(t));
   };
   if(SUPABASE_URL.startsWith("http") && window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: tFetch } });
