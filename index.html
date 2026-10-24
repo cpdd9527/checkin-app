@@ -2535,11 +2535,18 @@ async function loadRecords(){
   if(!calYear){ calYear = now.getFullYear(); calMonth = now.getMonth(); }
   const from = new Date(calYear, calMonth-1, 26);
   const to = new Date(calYear, calMonth+1, 5);
-  const { data, error } = await sb.from("checkins")
-    .select("date, project_id, meta")
-    .eq("user_id", me.id)
-    .gte("date", todayStr(from)).lte("date", todayStr(to));
-  if(error){ box.innerHTML = backBtn + `<div class="rec-empty">日历读取失败，稍后再试试</div>`; return; }
+  let data = null;
+  try{
+    const r = await sbRetry(()=>sb.from("checkins")
+      .select("date, project_id, meta")
+      .eq("user_id", me.id)
+      .gte("date", todayStr(from)).lte("date", todayStr(to)), 3);
+    if(r.error) throw r.error;
+    data = r.data||[];
+  }catch(e){
+    box.innerHTML = backBtn + `<div class="rec-empty">日历读取失败，自动重试过还是没连上，稍后再试试</div>`;
+    return;
+  }
   const nameMap = {}; myProjects.forEach(p=>nameMap[p.id]=p.name);
   const byDate = {};
   for(const r of (data||[])){ (byDate[r.date]=byDate[r.date]||[]).push(nameMap[r.project_id]||"项目"); }
@@ -2755,12 +2762,19 @@ async function openChatHistory(){
   const listBox=$("histList");
   panel.classList.remove("hidden");
   listBox.innerHTML = `<div class="hist-empty">正在找…</div>`;
-  const { data } = await sb.from("chat_messages")
-    .select("created_at,role")
-    .eq("user_id", me.id)
-    .order("created_at", { ascending:false })
-    .limit(1000);
-  const rows = (data||[]).filter(r=>r.role!=="note");
+  let rows=[];
+  try{
+    const r = await sbRetry(()=>sb.from("chat_messages")
+      .select("created_at,role")
+      .eq("user_id", me.id)
+      .order("created_at", { ascending:false })
+      .limit(1000), 3);
+    if(r.error) throw r.error;
+    rows = (r.data||[]).filter(x=>x.role!=="note");
+  }catch(e){
+    listBox.innerHTML = `<div class="hist-empty">网络不太稳，加载失败，点「📅 历史」再试一次</div>`;
+    return;
+  }
   const days={};
   for(const r of rows){
     const d=String(r.created_at).slice(0,10);
@@ -2781,13 +2795,24 @@ async function loadChatByDate(dstr){
   const panel=$("histPanel");
   const box=$("chatBox");
   panel.classList.add("hidden");
-  const { data } = await sb.from("chat_messages")
-    .select("role,content,created_at")
-    .eq("user_id", me.id)
-    .gte("created_at", dstr+"T00:00:00")
-    .lt("created_at", dstr+"T23:59:59.999")
-    .order("created_at", { ascending:true });
-  const list = (data||[]).filter(m=>m.role!=="note");
+  let list = [];
+  try{
+    const r = await sbRetry(()=>sb.from("chat_messages")
+      .select("role,content,created_at")
+      .eq("user_id", me.id)
+      .gte("created_at", dstr+"T00:00:00")
+      .lt("created_at", dstr+"T23:59:59.999")
+      .order("created_at", { ascending:true }), 3);
+    if(r.error) throw r.error;
+    list = (r.data||[]).filter(m=>m.role!=="note");
+  }catch(e){
+    box.innerHTML="";
+    const div=document.createElement("div");
+    div.className="msg ai";
+    div.innerHTML = `<span class="who">搭搭</span>那天记录加载失败，网络不太稳，再点一次试试～`;
+    box.appendChild(div);
+    return;
+  }
   box.innerHTML="";
   if(!list.length){
     const div=document.createElement("div");
