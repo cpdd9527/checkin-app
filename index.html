@@ -809,9 +809,10 @@ function clearTodayCache(){ try{ localStorage.removeItem(todayCacheKey()); }catc
 async function loadApp(){
   const { data: { user } } = await sbRetry(()=>sb.auth.getUser(), 3);
   if(!user) return;
-  const prof = await sbRetry(()=>sb.from("profiles").select("*").eq("id", user.id).single(), 3);
-  if(!prof){ await sb.auth.signOut(); location.reload(); return; }
-  me = prof;
+  // 注意：sbRetry 返回 {data, error}，必须取 .data 再赋给 me，否则 me 会变成一个无 id/nickname 的空壳
+  const profRes = await sbRetry(()=>sb.from("profiles").select("*").eq("id", user.id).single(), 3);
+  if(!profRes || !profRes.data || profRes.error){ await sb.auth.signOut(); location.reload(); return; }
+  me = profRes.data;
   $("authView").classList.add("hidden");
   $("appView").classList.remove("hidden");
   $("topName").textContent = me.nickname;
