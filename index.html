@@ -1682,7 +1682,7 @@ function attachSticker(text){
   const s=pickSticker(text);
   return s ? text + `<img class="sticker" src="${s}" alt="搭搭表情">` : text;
 }
-function sendChat(){
+async function sendChat(){
   const inp=$("chatInput");
   const t=inp.value.trim();
   if(!t) return;
@@ -1704,6 +1704,21 @@ function sendChat(){
       `嗯，${r.status}——了解了，先记下。次数多了我会提醒你，别让同一种原因反复出现哦`,
       `好，${r.status}。记上了！下个月咱们想办法避开它💪`,
     ])(),"ai");
+    return;
+  }
+  // 「记住：…」口令：命令必记，前端直接存并确认（不走AI，确保一定记下）
+  const rm = t.match(/^(记住|记一下|帮我记住|记着|别忘了)[：:\s,，]*(.+)$/);
+  if(rm){
+    const note = rm[2].trim().slice(0,80);
+    if(note){
+      const ok = await saveNoteDirect(note);
+      addMsg(pick([
+        `好，记下了：「${note}」～我记性很好的`,
+        `记住了！「${note}」，我会一直想着的`,
+        `嗯嗯，写进我的小本本：「${note}」`,
+      ])(), "ai");
+      if(!ok) console.error("remember save failed");
+    }
     return;
   }
   aiChat(t);
@@ -1740,6 +1755,7 @@ async function getAiContext(){
 }
 let aiMemCache = null;          // 每次对话前刷新：最近对话回忆 + 记住的事 + 今日状态
 let aiStateCache = { todayNames:[], streak:0, total:0 };
+let aiWeatherCache = null;      // 每次对话前刷新：烟台今日天气（免费API，失败静默）
 async function getAiMemory(){
   try{
     const from = new Date(); from.setDate(from.getDate()-3);
@@ -1779,24 +1795,53 @@ async function getAiMemory(){
         while(dates.has(todayStr(dd))){ streak++; dd.setDate(dd.getDate()-1); }
       }
     }catch(e){}
+    let goneDays = 0;
+    try{
+      const { data: lastMsg } = await sb.from("chat_messages").select("created_at").eq("user_id", me.id).order("created_at",{ascending:false}).limit(1);
+      if(lastMsg && lastMsg.length){
+        const ld = new Date(lastMsg[0].created_at);
+        const todayS = new Date(); todayS.setHours(0,0,0,0);
+        const lastS = new Date(ld.getFullYear(), ld.getMonth(), ld.getDate());
+        goneDays = Math.max(0, Math.round((todayS - lastS)/86400000));
+      }
+    }catch(e){}
     aiStateCache = { todayNames, streak, total };
     return {
       recent: recentTxt || "（最近几天没有聊过天）",
-      notes: (notes||[]).map(n=>n.content).join("\n") || "（还没有特别记下的事）"
+      notes: (notes||[]).map(n=>n.content).join("\n") || "（还没有特别记下的事）",
+      goneDays
     };
   }catch(e){
-    return { recent:"（读不到）", notes:"（读不到）" };
+    return { recent:"（读不到）", notes:"（读不到）", goneDays:0 };
   }
+}
+async function getAiWeather(){
+  try{
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), 4000);
+    const r = await fetch("https://wttr.in/Yantai?format=j1", { signal: ctrl.signal });
+    clearTimeout(timer);
+    const j = await r.json();
+    const c = j && j.current_condition && j.current_condition[0];
+    if(!c) return null;
+    const desc = (c.weatherDesc && c.weatherDesc[0] && c.weatherDesc[0].value) || "";
+    return "烟台今天" + (desc?desc+"，":"") + c.temp_C + "℃，体感" + c.FeelsLikeC + "℃";
+  }catch(e){ return null; }
+}
+async function saveNoteDirect(note){
+  if(!me||!sb||!note) return false;
+  try{
+    const { data: dup } = await sb.from("chat_messages").select("id").eq("user_id", me.id).eq("role","note").eq("content",note).limit(1);
+    if(dup && dup.length) return true;
+    await sb.from("chat_messages").insert({ user_id: me.id, role:"note", content:note });
+    return true;
+  }catch(e){ return false; }
 }
 async function saveAiNote(t){
   if(!me||!sb) return;
+  if(/^(记住|记一下|帮我记住|记着|别忘了)[：:\s,，]/.test(t)) return;
   if(!/(我的目标|目标是想|想练|想减|想增|想瘦|想胖|受伤|拉伤|扭到|膝盖|腰不|肩不|不舒服|考试|换工作|职业|报名|坚持了|戒了|打算)/.test(t)) return;
-  const note=t.slice(0,80);
-  try{
-    const { data: dup } = await sb.from("chat_messages").select("id").eq("user_id", me.id).eq("role","note").eq("content",note).limit(1);
-    if(dup && dup.length) return;
-    await sb.from("chat_messages").insert({ user_id: me.id, role:"note", content:note });
-  }catch(e){}
+  saveNoteDirect(t.slice(0,80));
 }
 async function aiChat(t){
   if(aiBusy){ addMsg("稍等，我先把上一句回完~","ai"); return; }
@@ -1807,6 +1852,7 @@ async function aiChat(t){
   try{
     aiCtxCache = await getAiContext();
     aiMemCache = await getAiMemory();
+    aiWeatherCache = await getAiWeather();
     const hist = chatHistory(t);
     const { data, error } = await sb.functions.invoke("chat-ai", {
       body: { messages: hist, system: aiSystem() }
@@ -1892,6 +1938,15 @@ function aiSystem(){
   const todayCheck = (aiStateCache && aiStateCache.todayNames && aiStateCache.todayNames.length)
     ? "今天已经打过卡了：" + aiStateCache.todayNames.join("、")
     : "今天还没打卡" + (plan ? "（按课表该练「"+plan.name+"」）" : "");
+  const goneDays = (aiMemCache && aiMemCache.goneDays) || 0;
+  const missingLine = goneDays>=7 ? "你已经 "+goneDays+" 天没来了，说话要带想念和关心（但别指责）。\n"
+    : goneDays>=2 ? "你有 "+goneDays+" 天没来了，说话带一点想念，比如「好几天没见你啦」。\n" : "";
+  const weatherLine = aiWeatherCache ? "【今日天气】"+aiWeatherCache+"。天气有明显变化（降温/下雨/很热）时顺带关心一句（提醒带外套、别着凉、注意补水）。\n" : "";
+  let milestone = "";
+  if(aiStateCache && aiStateCache.total){
+    const hit = [1,3,7,15,30,100].find(d=>aiStateCache.total===d);
+    if(hit) milestone = "今天你累计打卡正好满 "+hit+" 天，主动热情地庆祝一下！\n";
+  }
   const userPlans = planSummaryForAI();
   let s = "你是「搭搭」，一个住在打卡App里的AI伙伴，有鲜明的性格和情绪，绝不是冷冰冰的问答机。\n" +
           "【性格】亲切活泼、带点小幽默，会撒娇也会小小地怼人；真心为用户好，鼓励为主但从不说教，调侃有分寸；说话像微信里的好朋友，长短句结合，可以带「嘿嘿」「嗯嗯～」「～」这类小语气，但不要每句都用。\n" +
@@ -1899,12 +1954,14 @@ function aiSystem(){
           "【时间与状态感知】"+planInfo+"。"+todayCheck+"。"+
           ((aiStateCache && aiStateCache.streak>0) ? "目前连续打卡 "+aiStateCache.streak+" 天、累计 "+aiStateCache.total+" 天。" : "") +
           "结合时间说话：早上主动道早、提醒今天的计划；晚上关心他早点休息；周末说点轻松的。\n" +
+          missingLine + weatherLine + milestone +
           "【最近几天的回忆（真实发生过才说，不知道的别编）】\n"+(aiMemCache?aiMemCache.recent:"（暂无）")+"\n"+
           "【搭搭记住的关于你的事】\n"+(aiMemCache?aiMemCache.notes:"（暂无）")+"\n"+
           "使用回忆的方式：聊到相关话题时自然带出（如「你上周说过……」「我记得你想练……」「你上次说腰不太舒服，今天悠着点」），不要生硬复述整段。\n" +
           (userPlans ? "【用户自定义课表】\n" + userPlans + "\n（用户问某个项目的安排时，按该项目课表回答，没有设置的那天不要编造动作）\n" : "") +
           "【用户最近7天真实打卡记录】\n" + (aiCtxCache || "（暂无）") + "\n" +
           "规则：① 用户问「昨天练了什么」「最近打卡了啥」「我打卡情况怎么样」等涉及打卡记录的问题时，必须以上面的真实打卡记录为准如实回答，记录里没有的就是没有，绝对不能编造；② 用户问「今天/该练什么」「练哪个动作」「一组多少」时，结合今天的课表和动作明细给出具体动作和组数建议；③ 用户提到他今天锻炼或学习的具体情况（做了什么动作/科目、做没做完、练了多久等），你必须在回复的最末尾另起一行，单独输出这条标记：[记:类型|标题|状态|备注]。类型只能填「锻炼」或「学习」；标题=动作名或科目名（如：臂力棒、数学）；状态=完成、未完成、进行中、无 四选一；备注=补充细节，没有就写「无」。④ 用户要求「修改/调整/设置/更改 某个打卡项目的课表或当天计划」（例如：把学习项目周一到周六都改成口腔科、某天改成休息、删除某天的安排、给某天加动作等）时，你必须在回复的最末尾另起一行，单独输出这条标记：[改:项目名|周几|标题|动作]。项目名=用户说的项目（如「学习」「锻炼」，必须是上面【用户自定义课表】里出现的项目名，找不到就用用户说的名字）；周几=要改的天，可以写「周一」「周六」或「周一到周五」「周一到周六」「1-6」「周一、周三」，删除某天时也要把该天写出来；标题=当天计划的新名称（如 口腔科、推日、休息），如果用户要删除某天的安排，标题填「删除」；动作=该天的动作明细，如「仰卧起坐3组15个、俯卧撑4组12个」，用户没提动作就填「无」。如果用户要求把某一整天的计划整体移动/挪/搬到另一天（如「把周四的拉日整体移到周三」「把学习挪到周六」），必须在回复的最末尾另起一行，单独输出这条标记：[移:项目名|原天|目标天]。项目名=用户说的项目；原天=计划现在所在的天（如「周四」）；目标天=要移到的天（如「周三」）。只输出这一个 [移:] 标记，绝对不要输出 [改:] 或 [动:]。输出 [改:] 标记后，正文里告诉用户已经改好了。⑤ 用户要求「修改/设计/增加/删除 某一天里的某个动作」时（例如：周一的俯卧撑两组改成三组；帮我在周三加仰卧起坐三组一组十个；把周二的深蹲删掉），你必须先根据【用户自定义课表】判断该天有没有这个动作，然后在回复的最末尾另起一行，单独输出这条标记：[动:项目名|周几|动作名|组数|次数|操作]。项目名=用户说的项目；周几=要改的天（支持「周一」或「周一到周五」这种范围，多个天会应用到每一天）；动作名=要处理的动作名称；组数=几组（用数字，如 3）；次数=每组几个或次数文字（如 15、每侧15个）；操作=「改」（修改该天已有动作的组数/次数，用户没提的那项就填课表里的原值）、「加」（新增该动作，组数次数按用户说的）、「删」（删除该动作，组数次数填「无」）。输出 [动:] 标记后，正文里告诉用户改好了。⑥ 用户说「补卡/补打卡/哪天忘了打卡/把哪天的卡补上」（例如「昨天忘了打卡，帮我补个锻炼的卡」「补前天学习的卡」）时，必须在回复的最末尾另起一行，单独输出这条标记：[补:项目名|YYYY-MM-DD|备注]。项目名=用户要补的打卡项目名（从【用户自定义课表】里找，找不到就用用户说的名字）；日期=要补的具体日期，格式必须是 YYYY-MM-DD，把用户说的「昨天/前天/大前天/10月8号」等推算成具体日期（今天是 " + todayStr() + "）；备注=用户说的补充细节，没有就写「无」。输出后正文里告诉用户补好了。除了①②③④⑤⑥六种情况，其他任何时候绝对不要输出 [记:] [改:] [动:] [移:] 或 [补:] 标记。" +
+          "⑧ 用户说「总结一下」「汇报」「今天怎么样」「最近怎么样」「我打卡情况怎么样」这类话时，结合【状态感知】【最近7天真实打卡记录】和课表，像老朋友一样简短汇总：今天练/学了什么、连续多少天、明天该练什么，语气自然，不用输出任何标记。\n" +
           "回复要口语化、简短（两三句内）、像朋友聊天，多鼓励，少说教。可以适当调侃用户偷懒。";
   return s;
 }
@@ -2199,6 +2256,13 @@ async function bootChat(){
     ];
     msg += pick(debtTpl)(debts.map(d=>`周${WEEK_CN[d.dow]}的${d.name}`).join("、"));
   }
+  const chatAskTpl = [
+    () => `\n\n诶对了，今天感觉怎么样？身体状态在线不😄`,
+    () => `\n\n今天的心情如何？开心就打卡庆祝一下，不开心我陪你聊会儿`,
+    () => `\n\n想聊聊今天的安排吗？或者有什么想让我帮你盯着的`,
+    () => `\n\n这周练下来感觉哪块最吃力？跟我说说，我帮你想想怎么调整`,
+  ];
+  msg += pick(chatAskTpl)();
   msg += histCount ? `\n\n（上面是之前的聊天，点「📅 历史」可以按日期回看）` : "";
   addMsg(msg,"ai");
   renderDailyTips();
