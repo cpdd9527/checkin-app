@@ -841,11 +841,13 @@ async function loadApp(){
       if(cb) cb.innerHTML = `<div class="msg ai"><span class="who">搭搭</span>正在同步你的数据…</div>`;
     }
   }catch(e){}
-  // 后台静默刷新：不阻塞界面，失败自动重试，成功后更新缓存并播开场白
+  // 后台静默刷新：项目与课表并行拉取（互不依赖），失败自动重试，成功后更新缓存并播开场白
   (async()=>{
     let pOk=false, wOk=false, perr=null, werr=null;
-    try{ await loadProjects(true); pOk=true; }catch(e){ perr=e; console.warn("projects refresh fail", e); }
-    try{ await loadAllPlans(); wOk=true; }catch(e){ werr=e; console.warn("plans refresh fail", e); }
+    await Promise.all([
+      (async()=>{ try{ await loadProjects(true); pOk=true; }catch(e){ perr=e; console.warn("projects refresh fail", e); } })(),
+      (async()=>{ try{ await loadAllPlans(); wOk=true; }catch(e){ werr=e; console.warn("plans refresh fail", e); } })()
+    ]);
     if(!pOk && !myProjects.length){
       // 加载失败且无缓存：明确告诉用户数据没丢，附上具体原因便于排查
       const why = perr && perr.message ? "（" + String(perr.message).slice(0,120) + "）" : "";
@@ -858,27 +860,50 @@ async function loadApp(){
   })();
 }
 
+/* ===== 统一打卡数据层：整个 App 只拉一次打卡记录（当天有效），
+   今日计数/昨日查询/欠账/AI回忆/日历/统计全部复用内存，不再各自发查询。
+   打卡、撤回、补卡后增量更新，不重查。网络失败各调用方自行容错，不阻断主流程 ===== */
+let checkinsCache = null;   // { rows:[{id,date,project_id,meta,created_at}], day:缓存日期 }
+let weatherCache = null;    // { txt, t } 天气缓存（5分钟）
+async function getMyCheckins(force){
+  const t = todayStr();
+  if(!force && checkinsCache && checkinsCache.day===t) return checkinsCache.rows;
+  const r = await sbRetry(()=>sb.from("checkins").select("id, date, project_id, meta, created_at").eq("user_id", me.id).order("date",{ascending:false}).limit(2000), 3);
+  if(r.error) throw r.error;
+  checkinsCache = { rows: r.data||[], day: t };
+  return checkinsCache.rows;
+}
+async function getMyCheckinsSafe(force){
+  try{ return await getMyCheckins(force); }catch(e){ return null; }
+}
+function dropCheckinsCache(){ checkinsCache = null; }
+function addCheckinsCacheRow(pid, date, meta){
+  if(checkinsCache) checkinsCache.rows.push({ id: "tmp-"+Date.now()+"-"+Math.random(), date, project_id: pid, meta: meta||{}, created_at: new Date().toISOString() });
+}
+
 async function loadProjects(force){
-  const res = await sbRetry(()=>sb.from("projects").select("*").order("sort"), 3);
+  // 项目列表 与 打卡记录 并行拉取（都只依赖 user.id）
+  const [res, todayRows] = await Promise.all([
+    sbRetry(()=>sb.from("projects").select("*").order("sort"), 3),
+    getMyCheckinsSafe(force)
+  ]);
   if(res.error) throw res.error; // 查询失败要显式报错，不能静默当"没数据"
-  const data = res.data||[];
-  myProjects = data;
-  // 今日次数：缓存命中直接复用（当天只查一次）；force 时强制重查
-  const key = todayCacheKey();
-  if(force || !cacheGet(key)){
-    // 今日计数：单独容错——count 查不到就先用 0/旧值，不让它拖垮整个项目列表
-    await Promise.all(myProjects.map(async (p)=>{
-      try{
-        const r = await sbRetry(()=>sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", p.id).eq("date", todayStr()), 2);
-        p.today = (!r.error && r.count!=null) ? r.count : (p.today||0);
-      }catch(e){ /* 保留原值 */ }
-    }));
-    cacheSet(key, myProjects.map(p=>({ id:p.id, today:p.today })));
+  myProjects = res.data||[];
+  const t = todayStr();
+  if(todayRows){
+    // 今日次数：从统一数据层数一遍（0 额外查询）
+    const m = {};
+    for(const r of todayRows) if(r.date===t && r.project_id) m[r.project_id]=(m[r.project_id]||0)+1;
+    for(const p of myProjects) p.today = m[p.id]||0;
   } else {
-    const m = {}; (cacheGet(key)||[]).forEach(x=>m[x.id]=x.today);
-    myProjects.forEach(p=>{ if(m[p.id]!==undefined) p.today = m[p.id]; });
+    // 打卡记录没拉到：读本地备份计数，绝不显示假 0
+    try{
+      const cm = {}; (cacheGet(todayCacheKey())||[]).forEach(x=>cm[x.id]=x.today);
+      myProjects.forEach(p=>{ if(cm[p.id]!==undefined) p.today = cm[p.id]; });
+    }catch(e){}
   }
   cacheSet("ck_p_"+me.id, myProjects);
+  cacheSet(todayCacheKey(), myProjects.map(p=>({ id:p.id, today:p.today })));
 }
 
 /* ================= 聊天渲染 ================= */
@@ -914,9 +939,7 @@ function nextBadge(streak, total){
 }
 function diffDays(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 async function calcBadgeStats(){
-  const r = await sbRetry(()=>sb.from("checkins").select("date").eq("user_id", me.id), 3);
-  if(r.error) throw r.error;   // 失败显式报错，避免误显示"徽章全没解锁"
-  const data = r.data||[];
+  const data = await getMyCheckins();   // 复用打卡数据层，零额外查询；失败显式报错，避免误显示"徽章全没解锁"
   const dateList = data.map(d=>d.date).filter(Boolean);
   const dates = new Set(dateList);
   let streak=0; const d=new Date();
@@ -1714,6 +1737,7 @@ async function doCheckinRecord(project, meta){
     user_id: me.id, project_id: project.id, date: todayStr(), note:"", meta
   });
   project.today = (project.today||0)+1;
+  addCheckinsCacheRow(project.id, todayStr(), meta);  // 增量更新打卡数据层，后续功能不用重查
   clearTodayCache(); // 今日计数变了，失效当天缓存
   // 打卡同步写入「打卡记录」页，刷新后依然可见
   const mm = meta||{};
@@ -1735,6 +1759,8 @@ async function undoCheckinToday(pid){
       .limit(1);
     if(!data || !data.length){ alert("今天没有可撤回的打卡记录"); return; }
     await sb.from("checkins").delete().eq("id", data[0].id);
+    // 同步从打卡数据层移除（按 id），今日计数即时更新
+    if(checkinsCache) checkinsCache.rows = checkinsCache.rows.filter(r=>r.id!==data[0].id);
   }catch(e){
     alert("撤回失败，稍后再试");
     return;
@@ -1845,16 +1871,12 @@ let aiCtxCache = "";   // 每次对话前刷新：用户最近打卡记录摘要
 async function getAiContext(){
   try{
     const from = new Date(); from.setDate(from.getDate()-6);
-    const { data } = await sb.from("checkins")
-      .select("date, project_id, meta")
-      .eq("user_id", me.id)
-      .gte("date", todayStr(from))
-      .order("date", { ascending:false })
-      .limit(200);
-    if(!data || !data.length) return "（最近7天暂无打卡记录）";
+    const data = await getMyCheckins();   // 复用打卡数据层，零额外查询
+    const list = (data||[]).filter(c=>c.date >= todayStr(from));
+    if(!list.length) return "（最近7天暂无打卡记录）";
     const nameMap = {}; myProjects.forEach(p=>nameMap[p.id]=p.name);
     const byDate = {};
-    for(const c of data){
+    for(const c of list){
       const nm = nameMap[c.project_id] || "未知项目";
       const mm = c.meta || {};
       let extra = "";
@@ -1874,13 +1896,15 @@ let aiStateCache = { todayNames:[], streak:0, total:0 };
 let aiWeatherCache = null;      // 每次对话前刷新：烟台今日天气（免费API，失败静默）
 async function getAiMemory(){
   try{
-    const from = new Date(); from.setDate(from.getDate()-3);
-    const { data: recent } = await sb.from("chat_messages")
+    // 一次拉最近 100 条对话（含备注），同时满足：最近回忆 / 记住的事 / 离开天数（原来是 3 次查询）
+    const r0 = await sbRetry(()=>sb.from("chat_messages")
       .select("role,content,created_at").eq("user_id", me.id)
-      .gte("created_at", todayStr(from)+"T00:00:00")
-      .order("created_at",{ascending:true}).limit(80);
+      .order("created_at",{ascending:false}).limit(100), 3);
+    if(r0.error) throw r0.error;
+    const msgsAll = r0.data||[];
+    const msgs = msgsAll.slice().reverse();   // 恢复正序（旧→新），与历史逻辑一致
     const dayMap={};
-    for(const m of (recent||[])){
+    for(const m of msgs){
       if(m.role==="note") continue;
       const txt=(m.content||"").replace(/\[[记改动静补]:[^\]\n]*\]/g,"").trim().slice(0,60);
       if(!txt) continue;
@@ -1889,42 +1913,30 @@ async function getAiMemory(){
       (dayMap[key]=dayMap[key]||[]).push((m.role==="user"?"你说：":"搭搭说：")+txt);
     }
     const recentTxt = Object.keys(dayMap).slice(-5).map(d=>d+" "+dayMap[d].slice(-6).join("；")).join("\n");
-    const { data: notes } = await sb.from("chat_messages")
-      .select("content,created_at").eq("user_id", me.id).eq("role","note")
-      .order("created_at",{ascending:false}).limit(10);
-    const todayNames=[];
+    const notes = msgs.filter(m=>m.role==="note").slice(-10).map(n=>n.content);
+    // 打卡状态：复用打卡数据层（原来是 2 次查询）
+    let todayNames=[], streak=0, total=0;
     try{
-      const { data: chk } = await sb.from("checkins").select("date,project_id")
-        .eq("user_id", me.id).eq("date", todayStr()).limit(50);
-      if(chk && chk.length){
-        const nm={}; myProjects.forEach(p=>nm[p.id]=p.name);
-        for(const c of chk) todayNames.push(nm[c.project_id]||"未知");
-      }
-    }catch(e){}
-    let streak=0, total=0;
-    try{
-      const { data: all } = await sb.from("checkins").select("date").eq("user_id", me.id).limit(500);
-      if(all && all.length){
-        const dates=new Set(all.map(d=>d.date));
-        total=dates.size;
-        const dd=new Date();
-        while(dates.has(todayStr(dd))){ streak++; dd.setDate(dd.getDate()-1); }
-      }
+      const rows = await getMyCheckins();
+      const nm={}; myProjects.forEach(p=>nm[p.id]=p.name);
+      for(const c of rows) if(c.date===todayStr()) todayNames.push(nm[c.project_id]||"未知");
+      const dates=new Set(rows.map(d=>d.date));
+      total=dates.size;
+      const dd=new Date();
+      while(dates.has(todayStr(dd))){ streak++; dd.setDate(dd.getDate()-1); }
     }catch(e){}
     let goneDays = 0;
-    try{
-      const { data: lastMsg } = await sb.from("chat_messages").select("created_at").eq("user_id", me.id).order("created_at",{ascending:false}).limit(1);
-      if(lastMsg && lastMsg.length){
-        const ld = new Date(lastMsg[0].created_at);
-        const todayS = new Date(); todayS.setHours(0,0,0,0);
-        const lastS = new Date(ld.getFullYear(), ld.getMonth(), ld.getDate());
-        goneDays = Math.max(0, Math.round((todayS - lastS)/86400000));
-      }
-    }catch(e){}
+    const last = msgs.filter(m=>m.role!=="note").slice(-1)[0];
+    if(last){
+      const ld = new Date(last.created_at);
+      const todayS = new Date(); todayS.setHours(0,0,0,0);
+      const lastS = new Date(ld.getFullYear(), ld.getMonth(), ld.getDate());
+      goneDays = Math.max(0, Math.round((todayS - lastS)/86400000));
+    }
     aiStateCache = { todayNames, streak, total };
     return {
       recent: recentTxt || "（最近几天没有聊过天）",
-      notes: (notes||[]).map(n=>n.content).join("\n") || "（还没有特别记下的事）",
+      notes: notes.join("\n") || "（还没有特别记下的事）",
       goneDays
     };
   }catch(e){
@@ -1932,6 +1944,8 @@ async function getAiMemory(){
   }
 }
 async function getAiWeather(){
+  // 5 分钟缓存：连续聊天不反复请求外部天气接口
+  if(weatherCache && Date.now()-weatherCache.t < 300000) return weatherCache.txt;
   try{
     const ctrl = new AbortController();
     const timer = setTimeout(()=>ctrl.abort(), 4000);
@@ -1941,7 +1955,9 @@ async function getAiWeather(){
     const c = j && j.current_condition && j.current_condition[0];
     if(!c) return null;
     const desc = (c.weatherDesc && c.weatherDesc[0] && c.weatherDesc[0].value) || "";
-    return "烟台今天" + (desc?desc+"，":"") + c.temp_C + "℃，体感" + c.FeelsLikeC + "℃";
+    const txt = "烟台今天" + (desc?desc+"，":"") + c.temp_C + "℃，体感" + c.FeelsLikeC + "℃";
+    weatherCache = { txt, t: Date.now() };
+    return txt;
   }catch(e){ return null; }
 }
 async function saveNoteDirect(note){
@@ -2310,9 +2326,9 @@ async function bootChat(){
     return;
   }
 
-  // 昨天的账
-  const { data: yc } = await sb.from("checkins").select("project_id, meta").eq("user_id", me.id).eq("date", ystr);
-  const yList = yc||[];
+  // 昨天的账（复用统一打卡数据层，不再单独发查询）
+  let yList = [];
+  try{ const rows = await getMyCheckins(); yList = rows.filter(r=>r.date===ystr); }catch(e){}
   const workOutToday = yList.some(c=>c.project_id && myProjects.find(p=>p.id===c.project_id)?.name==="锻炼");
   const studyToday = yList.some(c=>c.project_id && myProjects.find(p=>p.id===c.project_id)?.name==="学习");
   const yMiss=[];
@@ -2421,11 +2437,7 @@ async function computeDebts(){
   const setDays = Object.keys(wp).filter(d=>wp[d] && wp[d].title).map(Number);
   if(!setDays.length) return [];
   let rows = [];
-  try{
-    const r = await sbRetry(()=>sb.from("checkins").select("date, project_id, meta").eq("project_id", proj.id), 3);
-    if(r.error) throw r.error;
-    rows = r.data||[];
-  }catch(e){ return []; }   // 读不到欠账数据就当作没有欠，不吓唬用户
+  try{ rows = await getMyCheckins(); }catch(e){ return []; }   // 复用打卡数据层，读不到就当作没有欠
   const list = rows;
   const debts=[];
   const now=new Date();
@@ -2613,12 +2625,10 @@ async function loadRecords(){
   const to = new Date(calYear, calMonth+1, 5);
   let data = null;
   try{
-    const r = await sbRetry(()=>sb.from("checkins")
-      .select("date, project_id, meta")
-      .eq("user_id", me.id)
-      .gte("date", todayStr(from)).lte("date", todayStr(to)), 3);
-    if(r.error) throw r.error;
-    data = r.data||[];
+    // 复用打卡数据层，按日历范围过滤（不再单独查库）
+    const rows = await getMyCheckins();
+    const fromS = todayStr(from), toS = todayStr(to);
+    data = rows.filter(r=>r.date>=fromS && r.date<=toS);
   }catch(e){
     box.innerHTML = backBtn + `<div class="rec-empty">日历读取失败，自动重试过还是没连上，稍后再试试</div>`;
     return;
@@ -2675,6 +2685,7 @@ function calNav(delta){
 async function doBackfill(dateStr, pid, note){
   const p = myProjects.find(x=>x.id===pid);
   await sb.from("checkins").insert({ user_id: me.id, project_id: pid, date: dateStr, note: note||"", meta:{ backfill:true } });
+  addCheckinsCacheRow(pid, dateStr, { backfill:true });   // 增量更新打卡数据层
   saveRecord("打卡", p?p.name:"补卡", "完成", "补卡："+dateStr+(note?"（"+note+"）":""));
 }
 let backfillDate = null;
@@ -3048,9 +3059,7 @@ async function loadStats(){
   let rows = [];
   const box=$("statsView");
   try{
-    const r = await sbRetry(()=>sb.from("checkins").select("date, project_id, meta, created_at").eq("user_id", me.id).order("date", { ascending:true }), 3);
-    if(r.error) throw r.error;
-    rows = r.data||[];
+    rows = await getMyCheckins();   // 复用打卡数据层，零额外查询
   }catch(e){
     box.innerHTML = `<div class="back-row"><button class="mini-btn" onclick="showMineHome()">← 返回我的</button></div><div class="rec-empty">统计加载失败，自动重试过还是没连上，稍后再试试</div>`;
     return;
