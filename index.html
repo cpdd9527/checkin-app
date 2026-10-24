@@ -836,13 +836,14 @@ async function loadApp(){
   }catch(e){}
   // 后台静默刷新：不阻塞界面，失败自动重试，成功后更新缓存并播开场白
   (async()=>{
-    let pOk=false, wOk=false;
-    try{ await loadProjects(true); pOk=true; }catch(e){ console.warn("projects refresh fail", e); }
-    try{ await loadAllPlans(); wOk=true; }catch(e){ console.warn("plans refresh fail", e); }
+    let pOk=false, wOk=false, perr=null, werr=null;
+    try{ await loadProjects(true); pOk=true; }catch(e){ perr=e; console.warn("projects refresh fail", e); }
+    try{ await loadAllPlans(); wOk=true; }catch(e){ werr=e; console.warn("plans refresh fail", e); }
     if(!pOk && !myProjects.length){
-      // 网络失败且无缓存：明确告诉用户数据没丢，避免误以为记录被清空
+      // 加载失败且无缓存：明确告诉用户数据没丢，附上具体原因便于排查
+      const why = perr && perr.message ? "（" + String(perr.message).slice(0,120) + "）" : "";
       const cb=$("chatBox");
-      if(cb) cb.innerHTML = `<div class="msg ai"><span class="who">搭搭</span>网络没连上，你的记录都好好存在云端，一条没丢。等网络好一点，刷新一下页面就能看到了～`;
+      if(cb) cb.innerHTML = `<div class="msg ai"><span class="who">搭搭</span>数据加载失败${why}。你的记录都在云端存着，等网络好一点刷新一下页面就能看到了～`;
       try{ renderDailyTips(); }catch(e){}
       return;
     }
@@ -851,8 +852,10 @@ async function loadApp(){
 }
 
 async function loadProjects(force){
-  const { data } = await sbRetry(()=>sb.from("projects").select("*").order("sort"), 3);
-  myProjects = data||[];
+  const res = await sbRetry(()=>sb.from("projects").select("*").order("sort"), 3);
+  if(res.error) throw res.error; // 查询失败要显式报错，不能静默当"没数据"
+  const data = res.data||[];
+  myProjects = data;
   // 今日次数：缓存命中直接复用（当天只查一次）；force 时强制重查
   const key = todayCacheKey();
   if(force || !cacheGet(key)){
@@ -1032,6 +1035,8 @@ async function loadAllPlans(){
       sbRetry(()=>sb.from("weekly_plan").select("*").eq("user_id", me.id), 3),
       sbRetry(()=>sb.from("plan_actions").select("*").eq("user_id", me.id).order("sort"), 3)
     ]);
+    if(wpRes.error) throw wpRes.error;
+    if(actRes.error) throw actRes.error;
     for(const r of (wpRes.data||[])){
       (plansByProj[r.project_id] = plansByProj[r.project_id] || {})[r.dow] = { title: r.title||"", actions: [] };
     }
