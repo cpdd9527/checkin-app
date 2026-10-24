@@ -649,7 +649,7 @@ const FIXED_PLAN=[ // 固定课表：0=周日 … 6=周六
 /* 训练日动作明细（组数×次数），搭搭给训练建议时引用；未提供明细的日子不编造 */
 const PLAN_DETAIL={
   push:"①上斜跪姿俯卧撑 3组×15个 ②拉力绳坐姿推胸 3组×15个 ③臂力棒胸前慢弯 2组×10个 ④拉力绳过头臂屈伸 每侧3组×15个 ⑤死虫式 3组×10个/侧",
-  pull:"①拉力绳坐姿划船 4组×10个 ②拉力绳面拉 3组×15个 ③拉力绳高位下拉 3组×15个 ④拉力绳直臂下压 3组×15个 ⑤死虫式 3组×10个/侧",
+  pull:"①拉力绳坐姿划船 3组×20个 ②拉力绳面拉 3组×20个 ③拉力绳高位下拉 3组×15个 ④拉力绳直臂下压 3组×15个 ⑤死虫式 3组×10个/侧",
   legs:"按你平时的腿部训练安排来",
   run:"按你平时的跑步/间歇跑安排来"
 };
@@ -811,7 +811,14 @@ async function loadApp(){
   if(!user) return;
   // 注意：sbRetry 返回 {data, error}，必须取 .data 再赋给 me，否则 me 会变成一个无 id/nickname 的空壳
   const profRes = await sbRetry(()=>sb.from("profiles").select("*").eq("id", user.id).single(), 3);
-  if(!profRes || !profRes.data || profRes.error){ await sb.auth.signOut(); location.reload(); return; }
+  if(!profRes || !profRes.data || profRes.error){
+    // 资料查询失败：不强制登出（避免"莫名其妙被踢"），显示提示让用户刷新重试
+    $("authView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+    const cb=$("chatBox");
+    if(cb) cb.innerHTML = `<div class="msg ai"><span class="who">搭搭</span>资料加载失败，网络不太稳，刷新一下页面再试试～（你的数据都在云端存着）</div>`;
+    return;
+  }
   me = profRes.data;
   $("authView").classList.add("hidden");
   $("appView").classList.remove("hidden");
@@ -859,9 +866,12 @@ async function loadProjects(force){
   // 今日次数：缓存命中直接复用（当天只查一次）；force 时强制重查
   const key = todayCacheKey();
   if(force || !cacheGet(key)){
+    // 今日计数：单独容错——count 查不到就先用 0/旧值，不让它拖垮整个项目列表
     await Promise.all(myProjects.map(async (p)=>{
-      const { count } = await sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", p.id).eq("date", todayStr());
-      p.today = count||0;
+      try{
+        const r = await sbRetry(()=>sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", p.id).eq("date", todayStr()), 2);
+        p.today = (!r.error && r.count!=null) ? r.count : (p.today||0);
+      }catch(e){ /* 保留原值 */ }
     }));
     cacheSet(key, myProjects.map(p=>({ id:p.id, today:p.today })));
   } else {
@@ -879,7 +889,9 @@ function addMsg(text, who){
   const av = who==="me"
     ? (me && me.avatar_b64 ? `<img class="mav" src="${me.avatar_b64}">` : `<div class="mav ph">${((me&&me.nickname)||"我").slice(0,1)}</div>`)
     : `<img class="mav" src="https://aka.doubaocdn.com/s/4VugrO5Q6k">`;
-  const bubble = `<div class="msg ${who==="me"?"me":"ai"}">${who==="me" ? text : `<span class="who">搭搭</span>${attachSticker(text)}`}</div>`;
+  // 统一转义：用户消息、AI消息、昵称都可能是任意文本，必须先转义再插入，防注入
+  const safe = esc(text);
+  const bubble = `<div class="msg ${who==="me"?"me":"ai"}">${who==="me" ? safe : `<span class="who">搭搭</span>${attachSticker(safe)}`}</div>`;
   row.innerHTML = av + bubble;
   box.appendChild(row);
   box.scrollTop = box.scrollHeight;
@@ -902,8 +914,10 @@ function nextBadge(streak, total){
 }
 function diffDays(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 async function calcBadgeStats(){
-  const { data } = await sb.from("checkins").select("date").eq("user_id", me.id);
-  const dateList = (data||[]).map(d=>d.date).filter(Boolean);
+  const r = await sbRetry(()=>sb.from("checkins").select("date").eq("user_id", me.id), 3);
+  if(r.error) throw r.error;   // 失败显式报错，避免误显示"徽章全没解锁"
+  const data = r.data||[];
+  const dateList = data.map(d=>d.date).filter(Boolean);
   const dates = new Set(dateList);
   let streak=0; const d=new Date();
   while(dates.has(todayStr(d))){ streak++; d.setDate(d.getDate()-1); }
@@ -1381,14 +1395,15 @@ async function planSaveProject(){
         acts.push({ user_id: me.id, project_id: pid, dow: d, name: a.name, sets: a.sets||null, reps: a.reps||null, sort: i });
       });
     }
+    // 先插入新课表、成功后再删旧课表：万一中途失败，旧数据还在，不会丢
+    const jobs = [];
+    if(wps.length) jobs.push(sb.from("weekly_plan").insert(wps));
+    if(acts.length) jobs.push(sb.from("plan_actions").insert(acts));
+    if(jobs.length) await Promise.all(jobs);
     await Promise.all([
       sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", pid),
       sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", pid)
     ]);
-    const jobs = [];
-    if(wps.length) jobs.push(sb.from("weekly_plan").insert(wps));
-    if(acts.length) jobs.push(sb.from("plan_actions").insert(acts));
-    await Promise.all(jobs);
     // 并行刷新本地缓存
     await Promise.all([loadProjects(), loadAllPlans()]);
     const days = wps.length;
@@ -1574,7 +1589,7 @@ function startCheckin(pid){
         }
       }
     };
-    addMsg(`今天练的是哪个？<br>（${["推日","拉日","腿日","间歇跑","其他"].join(" / ")}）`,"ai");
+    addMsg(`今天练的是哪个？\n（${["推日","拉日","腿日","间歇跑","其他"].join(" / ")}）`,"ai");
     renderQuick(["推日","拉日","腿日","间歇跑","其他"]);
   }
   else if(p.name==="学习"){
@@ -1673,7 +1688,6 @@ async function stopTimer(){
     addMsg(w2,"ai");
     saveChat("assistant", "CARD|锻炼|"+(meta.type||"")+"|"+minutes+"|"+streak+"|"+total+"|"+w2);
   } else {
-    addCard(buildCheckinCard({kind:"学习", proj:meta.subject||"", min:minutes, extra:meta.subject||"", streak, total, praise:w3}));
     const w3 = pick([
       "计时到！"+minutes+"分钟的学习稳稳拿下，专注力+1📈",
       "叮！"+minutes+"分钟学习打卡成功，知识+1、疲惫-1😎",
@@ -1681,6 +1695,7 @@ async function stopTimer(){
       "计时结束，"+minutes+"分钟专注达成，今天的自己又进一步✨",
       "学习"+minutes+"分钟拿下！坚持打卡的人运气不会太差🍀"
     ]);
+    addCard(buildCheckinCard({kind:"学习", proj:meta.subject||"", min:minutes, extra:meta.subject||"", streak, total, praise:w3}));
     addMsg(w3,"ai");
     saveChat("assistant", "CARD|学习|"+(meta.subject||"")+"|"+minutes+"|"+streak+"|"+total+"|"+w3);
   }
@@ -1734,16 +1749,23 @@ async function undoCheckinToday(pid){
 }
 
 async function calcStreak(pid){
-  const { data } = await sb.from("checkins").select("date").eq("project_id", pid).order("date", { ascending:false }).limit(60);
-  if(!data||!data.length) return 0;
-  const dates = new Set(data.map(d=>d.date));
-  let n=0; const d=new Date();
-  while(dates.has(todayStr(d))){ n++; d.setDate(d.getDate()-1); }
-  return n;
+  try{
+    const r = await sbRetry(()=>sb.from("checkins").select("date").eq("project_id", pid).order("date", { ascending:false }).limit(60), 3);
+    if(r.error) throw r.error;
+    const data = r.data||[];
+    if(!data.length) return 0;
+    const dates = new Set(data.map(d=>d.date));
+    let n=0; const d=new Date();
+    while(dates.has(todayStr(d))){ n++; d.setDate(d.getDate()-1); }
+    return n;
+  }catch(e){ console.warn("streak calc fail", e); return 0; }  // 计算失败不打断打卡流程，卡片数字刷新后为准
 }
 async function calcTotal(pid){
-  const { count } = await sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", pid);
-  return count||0;
+  try{
+    const r = await sbRetry(()=>sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", pid), 3);
+    if(r.error) throw r.error;
+    return r.count||0;
+  }catch(e){ console.warn("total calc fail", e); return 0; }
 }
 
 /* ================= 自由聊天 ================= */
@@ -1776,6 +1798,11 @@ async function sendChat(){
   const t=inp.value.trim();
   if(!t) return;
   inp.value="";
+  // 如果正停在历史某天的对话视图，先跳回最新对话，避免新消息混进历史那天
+  if(viewingHistoryDate){
+    viewingHistoryDate = null;
+    try{ await backToLatest(); }catch(e){}
+  }
   if(convState){
     chatReply(t).catch(()=>{ convState=null; addMsg("咦，刚才卡了一下。咱们重新聊——今天打卡了吗？😉","ai"); });
     return;
@@ -1948,7 +1975,9 @@ async function aiChat(t){
     });
     if(error) throw new Error(error.message || "调用失败");
     if(!data || data.error) throw new Error((data && data.error) || "无回复");
-    const reply = data.reply || "";
+    const rawReply = data.reply || "";
+    // 标记容错：AI 偶尔用全角冒号/竖线，先归一化再解析，避免"假装答应但标记没被识别"
+    const reply = rawReply.replace(/：/g,":").replace(/｜/g,"|");
     const recRe = /\[记:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\|([^\]]*)\]/g;
     const rmAll = [...reply.matchAll(recRe)];
     const planRe = /\[改:([^|\]]+)\|([^|\]]+)\|([^|\]]+)\|([^\]]*)\]/g;
@@ -1960,6 +1989,11 @@ async function aiChat(t){
     const bfRe = /\[补:([^|\]]+)\|([^|\]]+)\|([^\]]*)\]/g;
     const bfAll = [...reply.matchAll(bfRe)];
     let clean = reply.replace(/\[[记改动静补]:[^\]\n]*\]/g, "").trim();
+    // 声称"改好/补好/移好"却没有任何标记 → 大概率假装答应，提醒用户
+    if(/改好|补好|移好|记好|调整好|设置好|已经改|已改好|已补|已移|已记|帮你改|帮你调|给你改/.test(clean)
+        && !(rmAll.length+pmAll.length+amAll.length+mvAll.length+bfAll.length)){
+      addMsg("等一下，我好像光说改好了、没真正动手。先别刷新，你再跟我说一遍要改什么（比如：周一推日，俯卧撑3组×15个），我这次一定给你落实～","ai");
+    }
     const lb = loading.querySelector(".msg");
     if(lb) lb.innerHTML = `<span class="who">搭搭</span>` + attachSticker(esc(clean));
     for(const m of rmAll){ await saveRecord(m[1].trim(), m[2].trim(), m[3].trim(), m[4].trim()); }
@@ -2097,11 +2131,6 @@ async function applyAiPlanChange(projName, dowStr, title, actStr){
   const deleting = (title==="删除");
   const actions = parseAiActions(actStr);
   try{
-    // 先删这些天的旧行
-    await Promise.all([
-      sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", p.id).in("dow", days),
-      sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", p.id).in("dow", days)
-    ]);
     if(!deleting){
       const wps = days.map(d=>({ user_id: me.id, project_id: p.id, dow: d, title }));
       const acts = [];
@@ -2109,8 +2138,13 @@ async function applyAiPlanChange(projName, dowStr, title, actStr){
       const jobs = [];
       if(wps.length) jobs.push(sb.from("weekly_plan").insert(wps));
       if(acts.length) jobs.push(sb.from("plan_actions").insert(acts));
-      await Promise.all(jobs);
+      if(jobs.length) await Promise.all(jobs);   // 先插新的
     }
+    // 插新成功后再删旧行：中途失败旧数据还在，不会丢
+    await Promise.all([
+      sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", p.id).in("dow", days),
+      sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", p.id).in("dow", days)
+    ]);
     // 刷新内存缓存
     plansByProj[p.id] = plansByProj[p.id] || {};
     for(const d of days){
@@ -2135,12 +2169,13 @@ async function applyAiMove(projName, fromStr, toStr){
   const title = cur.title;
   const actions = (cur.actions||[]).map(a=>({ name:a.name, sets:a.sets, reps:a.reps }));
   try{
+    await sb.from("weekly_plan").insert({ user_id: me.id, project_id: p.id, dow: dst, title });
+    if(actions.length) await sb.from("plan_actions").insert(actions.map((a,i)=>({ user_id: me.id, project_id: p.id, dow: dst, name:a.name, sets:a.sets||null, reps:a.reps||null, sort:i })));
+    // 插新成功后再删旧：中途失败旧数据还在
     await Promise.all([
       sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", p.id).in("dow",[src,dst]),
       sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", p.id).in("dow",[src,dst])
     ]);
-    await sb.from("weekly_plan").insert({ user_id: me.id, project_id: p.id, dow: dst, title });
-    if(actions.length) await sb.from("plan_actions").insert(actions.map((a,i)=>({ user_id: me.id, project_id: p.id, dow: dst, name:a.name, sets:a.sets||null, reps:a.reps||null, sort:i })));
     plansByProj[p.id] = plansByProj[p.id] || {};
     delete plansByProj[p.id][src];
     plansByProj[p.id][dst] = { title, actions };
@@ -2187,15 +2222,15 @@ async function applyAiActionChange(projName, dowStr, actName, setsStr, repsStr, 
         }
       }
       if(!title && acts.length) title = "训练日";
-      // 写库：删该天旧行 → 重插
-      await Promise.all([
-        sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", p.id).eq("dow", d),
-        sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", p.id).eq("dow", d)
-      ]);
+      // 写库：先插新、成功后再删该天旧行（中途失败旧数据还在）
       if(title){
         await sb.from("weekly_plan").insert({ user_id: me.id, project_id: p.id, dow: d, title });
         if(acts.length) await sb.from("plan_actions").insert(acts.map((a,i)=>({ user_id: me.id, project_id: p.id, dow: d, name: a.name, sets: a.sets||null, reps: a.reps||null, sort: i })));
       }
+      await Promise.all([
+        sb.from("weekly_plan").delete().eq("user_id", me.id).eq("project_id", p.id).eq("dow", d),
+        sb.from("plan_actions").delete().eq("user_id", me.id).eq("project_id", p.id).eq("dow", d)
+      ]);
       // 更新内存缓存
       plansByProj[p.id] = plansByProj[p.id] || {};
       if(title && acts.length) plansByProj[p.id][d] = { title, actions: acts };
@@ -2376,23 +2411,35 @@ async function renderDailyTips(){
   box.innerHTML = tips.map(t=>`<span class="qchip">${t}</span>`).join("");
 }
 
-/* 欠账计算：固定课表里过去的日子，该类型一直没打卡（含后移补课）就算欠 */
+/* 欠账计算：基于用户自定义课表（weekly_plan）——凡本周已过且设有课表的日子，
+   从那天起到今天该训练类型没打过卡（含补卡）就算欠；后移补课也算销账。
+   注意：不能用旧固定课表 WEEK_KEYS 算，用户课表已经自定义（如周一推日周三拉日周五腿周日跑） */
 async function computeDebts(){
   const proj = myProjects.find(p=>p.name==="锻炼");
   if(!proj) return [];
-  const { data: rows } = await sb.from("checkins").select("date, meta").eq("project_id", proj.id);
-  const list = rows||[];
+  const wp = plansByProj[proj.id] || {};
+  const setDays = Object.keys(wp).filter(d=>wp[d] && wp[d].title).map(Number);
+  if(!setDays.length) return [];
+  let rows = [];
+  try{
+    const r = await sbRetry(()=>sb.from("checkins").select("date, project_id, meta").eq("project_id", proj.id), 3);
+    if(r.error) throw r.error;
+    rows = r.data||[];
+  }catch(e){ return []; }   // 读不到欠账数据就当作没有欠，不吓唬用户
+  const list = rows;
   const debts=[];
   const now=new Date();
   const dow=(now.getDay()+6)%7; // 周一=0
   for(let i=0;i<dow;i++){ // 本周一 至 昨天
     const dd=new Date(); dd.setDate(now.getDate()-(dow-i));
-    const key=WEEK_KEYS[dd.getDay()];
-    if(!key) continue;
-    const name=PLAN_NAME[key];
+    const key = dd.getDay();
+    const wpd = wp[key];
+    if(!wpd || !wpd.title) continue;   // 那天没设课表 → 不欠
+    const name = wpd.title;
     const ds=todayStr(dd);
-    // 从该课表日到今天，是否有对应类型打卡（后移补课也算销账）
-    const paid = list.some(r=> r.meta && r.meta.type===name && r.date>=ds);
+    // 从该课表日到今天，该项目是否打过对应类型的卡（后移补课、补卡都算销账）
+    const paid = list.some(r=> r.date>=ds && r.project_id===proj.id && r.meta &&
+      (r.meta.type===name || r.meta.backfill));
     if(!paid) debts.push({ dow:dd.getDay(), name, ds });
   }
   return debts;
@@ -2553,6 +2600,7 @@ function uploadAvatar(input){
 
 /* ================= 训练/学习记录 ================= */
 let calYear = null, calMonth = null;
+let viewingHistoryDate = null;  // 当前是否停在历史某天的对话视图
 async function loadRecords(){
   const box=$("recordsView");
   if(!me){ box.innerHTML=""; return; }
@@ -2823,6 +2871,7 @@ async function loadChatByDate(dstr){
   const panel=$("histPanel");
   const box=$("chatBox");
   panel.classList.add("hidden");
+  viewingHistoryDate = dstr;   // 标记停在历史某天
   let list = [];
   try{
     const r = await sbRetry(()=>sb.from("chat_messages")
@@ -2859,6 +2908,7 @@ async function loadChatByDate(dstr){
 }
 async function backToLatest(){
   $("histPanel").classList.add("hidden");
+  viewingHistoryDate = null;
   await loadRecentChat();
 }
 
@@ -2995,9 +3045,17 @@ async function adminDeleteUser(u){
 }
 
 async function loadStats(){
-  const { data: rows } = await sb.from("checkins").select("date, project_id, meta, created_at").eq("user_id", me.id).order("date", { ascending:true });
-  const list = rows||[];
+  let rows = [];
   const box=$("statsView");
+  try{
+    const r = await sbRetry(()=>sb.from("checkins").select("date, project_id, meta, created_at").eq("user_id", me.id).order("date", { ascending:true }), 3);
+    if(r.error) throw r.error;
+    rows = r.data||[];
+  }catch(e){
+    box.innerHTML = `<div class="back-row"><button class="mini-btn" onclick="showMineHome()">← 返回我的</button></div><div class="rec-empty">统计加载失败，自动重试过还是没连上，稍后再试试</div>`;
+    return;
+  }
+  const list = rows;
   const today = todayStr();
   // 训练项目：优先叫"锻炼"的项目，否则第一个设了课表的项目
   const trainProj = myProjects.find(p=>p.name==="锻炼") || myProjects.find(p=>plansByProj[p.id] && Object.keys(plansByProj[p.id]).some(d=>plansByProj[p.id][d] && plansByProj[p.id][d].title)) || null;
