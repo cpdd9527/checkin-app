@@ -688,10 +688,30 @@ function saveRemember(acct, pwd){
 async function doLogin(){
   const acct=$("loginAcct").value.trim().toUpperCase(), pwd=$("loginPwd").value;
   if(!acct||!pwd){ $("loginMsg").textContent="账号和密码都要填哦"; return; }
-  const { error } = await sb.auth.signInWithPassword({ email: acct+"@local.checkin", password: pwd });
-  if(error){ $("loginMsg").textContent = "账号或密码不对，再试试"; return; }
-  saveRemember(acct, pwd);
-  await loadApp();
+  $("loginMsg").textContent = "正在登录…";
+  let authErr = null;
+  for(let i=0;i<3;i++){
+    try{
+      const { error } = await sb.auth.signInWithPassword({ email: acct+"@local.checkin", password: pwd });
+      if(!error){
+        saveRemember(acct, pwd);
+        $("loginMsg").textContent = "登录成功，正在加载数据…";
+        await loadApp();
+        return;
+      }
+      authErr = error;
+      break; // 认证失败（账号密码错）不重试
+    }catch(e){
+      authErr = e;
+      if(i<2){
+        $("loginMsg").textContent = "网络不太稳，自动重试中（"+(i+1)+"/2）…";
+        await new Promise(r=>setTimeout(r, 600*(i+1)));
+      }
+    }
+  }
+  $("loginMsg").textContent = authErr && !/fetch|network|Network|load|Failed|socket/i.test(String(authErr.message||authErr))
+    ? "账号或密码不对，再试试"
+    : "网络连接失败，已自动重试 3 次，请稍后再试";
 }
 
 async function doRegister(){
@@ -760,31 +780,69 @@ async function doResetPwd(){
 
 function doLogout(){ sb.auth.signOut(); location.reload(); }
 
+/* ===== 网络重试 + 本地缓存（国内访问国外服务器不稳的兜底） ===== */
+async function sbRetry(fn, tries){
+  tries = tries || 3;
+  let lastErr;
+  for(let i=0;i<tries;i++){
+    try{ return await fn(); }
+    catch(e){ lastErr = e; if(i<tries-1) await new Promise(r=>setTimeout(r, 500*(i+1))); }
+  }
+  throw lastErr;
+}
+function cacheSet(key, val){
+  try{ localStorage.setItem(key, JSON.stringify({ t: Date.now(), v: val })); }catch(e){}
+}
+function cacheGet(key){
+  try{ const j = JSON.parse(localStorage.getItem(key)||"null"); return (j && j.v !== undefined) ? j.v : null; }catch(e){ return null; }
+}
+function todayCacheKey(){ return "ck_td_" + me.id + "_" + todayStr(); }
+function clearTodayCache(){ try{ localStorage.removeItem(todayCacheKey()); }catch(e){} }
+
 /* ================= 会话/数据加载 ================= */
 async function loadApp(){
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await sbRetry(()=>sb.auth.getUser(), 3);
   if(!user) return;
-  const { data: prof } = await sb.from("profiles").select("*").eq("id", user.id).single();
+  const prof = await sbRetry(()=>sb.from("profiles").select("*").eq("id", user.id).single(), 3);
   if(!prof){ await sb.auth.signOut(); location.reload(); return; }
   me = prof;
   $("authView").classList.add("hidden");
   $("appView").classList.remove("hidden");
   $("topName").textContent = me.nickname;
   $("topDate").textContent = fmtCN(todayStr());
-  await loadProjects();
-  await loadAllPlans();
-  await bootChat();
+  // 缓存秒开：先恢复上次的项目与课表（同步读本地，立即可用，避免空白）
+  try{
+    const c = cacheGet("ck_p_"+me.id);
+    if(c && Array.isArray(c)) myProjects = c;
+  }catch(e){}
+  try{
+    const w = cacheGet("ck_w_"+me.id);
+    if(w && typeof w==="object") plansByProj = w;
+  }catch(e){}
+  // 后台静默刷新：不阻塞界面，失败自动重试，成功后更新缓存
+  (async()=>{
+    try{ await loadProjects(true); }catch(e){ console.warn("projects refresh fail", e); }
+    try{ await loadAllPlans(); }catch(e){ console.warn("plans refresh fail", e); }
+    try{ await bootChat(); }catch(e){ console.error("boot fail", e); }
+  })();
 }
 
-async function loadProjects(){
-  const { data } = await sb.from("projects").select("*").order("sort");
+async function loadProjects(force){
+  const { data } = await sbRetry(()=>sb.from("projects").select("*").order("sort"), 3);
   myProjects = data||[];
-  // 今日次数（并行查）
-  const t = todayStr();
-  await Promise.all(myProjects.map(async (p)=>{
-    const { count } = await sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", p.id).eq("date", t);
-    p.today = count||0;
-  }));
+  // 今日次数：缓存命中直接复用（当天只查一次）；force 时强制重查
+  const key = todayCacheKey();
+  if(force || !cacheGet(key)){
+    await Promise.all(myProjects.map(async (p)=>{
+      const { count } = await sb.from("checkins").select("id", { count:"exact", head:true }).eq("project_id", p.id).eq("date", todayStr());
+      p.today = count||0;
+    }));
+    cacheSet(key, myProjects.map(p=>({ id:p.id, today:p.today })));
+  } else {
+    const m = {}; (cacheGet(key)||[]).forEach(x=>m[x.id]=x.today);
+    myProjects.forEach(p=>{ if(m[p.id]!==undefined) p.today = m[p.id]; });
+  }
+  cacheSet("ck_p_"+me.id, myProjects);
 }
 
 /* ================= 聊天渲染 ================= */
@@ -948,8 +1006,8 @@ async function loadAllPlans(){
   plansByProj = {};
   try{
     const [wpRes, actRes] = await Promise.all([
-      sb.from("weekly_plan").select("*").eq("user_id", me.id),
-      sb.from("plan_actions").select("*").eq("user_id", me.id).order("sort")
+      sbRetry(()=>sb.from("weekly_plan").select("*").eq("user_id", me.id), 3),
+      sbRetry(()=>sb.from("plan_actions").select("*").eq("user_id", me.id).order("sort"), 3)
     ]);
     for(const r of (wpRes.data||[])){
       (plansByProj[r.project_id] = plansByProj[r.project_id] || {})[r.dow] = { title: r.title||"", actions: [] };
@@ -958,6 +1016,7 @@ async function loadAllPlans(){
       const wk = plansByProj[a.project_id] || (plansByProj[a.project_id] = {});
       (wk[a.dow] = wk[a.dow] || { title:"", actions:[] }).actions.push(a);
     }
+    cacheSet("ck_w_"+me.id, plansByProj);
   }catch(e){ /* 读不到就用默认课表兜底 */ }
 }
 
@@ -1612,6 +1671,7 @@ async function doCheckinRecord(project, meta){
     user_id: me.id, project_id: project.id, date: todayStr(), note:"", meta
   });
   project.today = (project.today||0)+1;
+  clearTodayCache(); // 今日计数变了，失效当天缓存
   // 打卡同步写入「打卡记录」页，刷新后依然可见
   const mm = meta||{};
   const extra = mm.duration_min ? mm.duration_min+"分钟" : (mm.subject ? mm.subject : (mm.type ? mm.type : ""));
@@ -1636,6 +1696,7 @@ async function undoCheckinToday(pid){
     alert("撤回失败，稍后再试");
     return;
   }
+  clearTodayCache(); // 今日计数变了，失效当天缓存
   await loadProjects();
   openProjectPanel();
   const box=$("chatBox");
@@ -2641,40 +2702,53 @@ async function saveChat(role, content){
 async function loadRecentChat(){
   const box=$("chatBox");
   if(!me || !sb){ box.innerHTML=""; return 0; }
-  const { data } = await sb.from("chat_messages")
-    .select("role,content")
-    .eq("user_id", me.id)
-    .order("created_at", { ascending:false })
-    .limit(30);
-  const list = (data||[]).filter(m=>m.role!=="note").slice().reverse();
-  box.innerHTML="";
-  for(const m of list){
-    const row=document.createElement("div");
-    row.className="mrow "+(m.role==="user"?"me":"ai");
-    const av = m.role==="user"
-      ? (me && me.avatar_b64 ? `<img class="mav" src="${me.avatar_b64}">` : `<div class="mav ph">${((me&&me.nickname)||"我").slice(0,1)}</div>`)
-      : `<img class="mav" src="https://aka.doubaocdn.com/s/4VugrO5Q6k">`;
-    let bodyHtml;
-    if(m.role==="ai" && m.content.indexOf("CARD|")===0){
-      const parts = m.content.split("|");
-      bodyHtml = `<span class="who">搭搭</span>` + buildCheckinCard({
-        kind: parts[1]||"打卡", proj: parts[2]||"",
-        min: parts[3] && parts[3]!=="—" ? parseInt(parts[3]) : null,
-        extra: parts[3] && parts[3]!=="—" ? parts[3] : null,
-        streak: parseInt(parts[4]||0), total: parseInt(parts[5]||0),
-        praise: parts.slice(6).join("|")
-      });
-    } else if(m.role==="user"){
-      bodyHtml = esc(m.content);
-    } else {
-      bodyHtml = `<span class="who">搭搭</span>`+esc(m.content);
+  // 缓存秒开：先渲染上次的聊天（同步读本地，网络慢也不空白）
+  const cached = cacheGet("ck_chat_"+me.id);
+  const render = list=>{
+    box.innerHTML="";
+    for(const m of list){
+      const row=document.createElement("div");
+      row.className="mrow "+(m.role==="user"?"me":"ai");
+      const av = m.role==="user"
+        ? (me && me.avatar_b64 ? `<img class="mav" src="${me.avatar_b64}">` : `<div class="mav ph">${((me&&me.nickname)||"我").slice(0,1)}</div>`)
+        : `<img class="mav" src="https://aka.doubaocdn.com/s/4VugrO5Q6k">`;
+      let bodyHtml;
+      if(m.role==="ai" && m.content.indexOf("CARD|")===0){
+        const parts = m.content.split("|");
+        bodyHtml = `<span class="who">搭搭</span>` + buildCheckinCard({
+          kind: parts[1]||"打卡", proj: parts[2]||"",
+          min: parts[3] && parts[3]!=="—" ? parseInt(parts[3]) : null,
+          extra: parts[3] && parts[3]!=="—" ? parts[3] : null,
+          streak: parseInt(parts[4]||0), total: parseInt(parts[5]||0),
+          praise: parts.slice(6).join("|")
+        });
+      } else if(m.role==="user"){
+        bodyHtml = esc(m.content);
+      } else {
+        bodyHtml = `<span class="who">搭搭</span>`+esc(m.content);
+      }
+      const bubble = `<div class="msg ${m.role==="user"?"me":"ai"}">${bodyHtml}</div>`;
+      row.innerHTML = av + bubble;
+      box.appendChild(row);
     }
-    const bubble = `<div class="msg ${m.role==="user"?"me":"ai"}">${bodyHtml}</div>`;
-    row.innerHTML = av + bubble;
-    box.appendChild(row);
+    box.scrollTop = box.scrollHeight;
+  };
+  if(Array.isArray(cached) && cached.length) render(cached);
+  try{
+    const { data } = await sbRetry(()=>sb.from("chat_messages")
+      .select("role,content")
+      .eq("user_id", me.id)
+      .order("created_at", { ascending:false })
+      .limit(30), 3);
+    const list = (data||[]).filter(m=>m.role!=="note").slice().reverse();
+    render(list);
+    cacheSet("ck_chat_"+me.id, list);
+    return list.length;
+  }catch(e){
+    if(Array.isArray(cached) && cached.length) return cached.length;
+    box.innerHTML = `<div class="msg ai"><span class="who">搭搭</span>网络有点卡，聊天记录没加载出来，稍后刷新页面或点「📅 历史」回看～</div>`;
+    return 0;
   }
-  box.scrollTop = box.scrollHeight;
-  return list.length;
 }
 async function openChatHistory(){
   const panel=$("histPanel");
