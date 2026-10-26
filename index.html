@@ -621,30 +621,30 @@ function genAccount(){
   return s;
 }
 const WEEK_CN=["日","一","二","三","四","五","六"];
-const WEEK_KEYS=[null,"push","run",null,"pull","legs",null,null];
+/* 内置默认课表（仅对"从未建过课表"的新用户兜底引导）：0=周日 … 6=周六
+   当前默认：周一推日 / 周三拉日 / 周五腿日 / 周日间歇跑 */
+const WEEK_KEYS=["run","push",null,"pull",null,"legs",null];
 const PLAN_NAME={push:"推日",run:"间歇跑",pull:"拉日",legs:"腿日"};
 function todayPlan(){
   const dow = new Date().getDay();
   const proj = myProjects.find(p=>p.name==="锻炼");
-  const wp = proj && plansByProj[proj.id] ? plansByProj[proj.id][dow] : null;
+  const wps = proj && plansByProj[proj.id] ? plansByProj[proj.id] : null;
+  const wp = wps ? wps[dow] : null;
   if(wp && wp.title) return { key:"custom", name: wp.title, actions: wp.actions || [] };
-  const k = WEEK_KEYS[dow];
-  return k ? { key:k, name:PLAN_NAME[k], actions:null } : null;
+  // 关键规则：用户建过自定义课表 → 完全以用户为准，未设的日子=休息（绝不回退旧默认课表）；
+  // 只有从未建过课表的新用户，才用 WEEK_KEYS 默认引导
+  const hasCustom = wps && Object.keys(wps).some(d=>wps[d] && wps[d].title);
+  if(!hasCustom){
+    const k = WEEK_KEYS[dow];
+    return k ? { key:k, name:PLAN_NAME[k], actions:null } : null;
+  }
+  return null;
 }
 
 /* ================= 当前会话状态 ================= */
 let me = null;        // 当前用户 profile
 let myProjects = [];  // 我的打卡项目（含今日次数）
 let convState = null; // 对话状态机
-const FIXED_PLAN=[ // 固定课表：0=周日 … 6=周六
-  {key:null,name:"休息日"},
-  {key:"push",name:"推日"},
-  {key:"run",name:"间歇跑"},
-  {key:null,name:"休息日"},
-  {key:"pull",name:"拉日"},
-  {key:"legs",name:"腿日"},
-  {key:null,name:"休息日"},
-];
 /* 训练日动作明细（组数×次数），搭搭给训练建议时引用；未提供明细的日子不编造 */
 const PLAN_DETAIL={
   push:"①上斜跪姿俯卧撑 3组×15个 ②拉力绳坐姿推胸 3组×15个 ③臂力棒胸前慢弯 2组×10个 ④拉力绳过头臂屈伸 每侧3组×15个 ⑤死虫式 3组×10个/侧",
