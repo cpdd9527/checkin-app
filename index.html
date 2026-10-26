@@ -134,26 +134,25 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .mav{width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--line);flex-shrink:0;background:var(--card)}
   .mav.ph{display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--acc2)}
 
-  /* 总结卡片 */
-  .sum-card{background:linear-gradient(135deg,#4EA8DE 0%,#7B6FE8 100%);border-radius:18px;padding:15px 15px 13px;margin-top:8px;font-size:13.5px;color:#fff;position:relative;overflow:hidden;box-shadow:0 10px 24px rgba(43,127,184,.22)}
+  /* 总结卡片（紧凑版：一屏内完整显示） */
+  .sum-card{background:linear-gradient(135deg,#4EA8DE 0%,#7B6FE8 100%);border-radius:16px;padding:12px 14px 11px;margin-top:8px;font-size:13px;color:#fff;position:relative;overflow:hidden;box-shadow:0 8px 20px rgba(43,127,184,.2)}
   .sum-card::before{content:"";position:absolute;top:-60px;right:-40px;width:170px;height:170px;border-radius:50%;background:rgba(255,255,255,.15);filter:blur(6px)}
-  .sum-head{display:flex;align-items:center;gap:9px;position:relative}
-  .sum-ava{width:34px;height:34px;border-radius:50%;object-fit:cover;background:#fff;padding:2px}
-  .sum-head b{display:block;font-size:14px;font-weight:800}
-  .sum-head small{font-size:10.5px;opacity:.8;margin-top:1px}
-  .sum-main{display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px;position:relative}
-  .sum-proj{font-size:23px;font-weight:900;letter-spacing:1px}
-  .sum-stat{font-size:11.5px;font-weight:800;background:rgba(255,255,255,.22);border-radius:20px;padding:4px 12px}
-  .sum-quote{font-size:13px;font-weight:700;font-style:italic;opacity:.95;margin-bottom:11px;position:relative}
-  .sum-grid4{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px;position:relative}
-  .sum-grid4 .cell{background:rgba(255,255,255,.14);border-radius:11px;padding:8px 9px;text-align:center}
-  .sum-grid4 .cell b{display:block;font-size:17px;font-weight:900;color:#fff;margin-bottom:1px}
-  .sum-grid4 .cell span{font-size:10px;opacity:.78}
-  .sum-streak{background:rgba(255,255,255,.1);border-radius:11px;padding:9px 11px;position:relative}
-  .sum-streak .srow{display:flex;justify-content:space-between;font-size:11px;font-weight:800;color:#fff}
-  .sum-streak .track{height:6px;background:rgba(255,255,255,.2);border-radius:4px;margin:6px 0 5px;overflow:hidden}
+  .sum-head{display:flex;align-items:center;gap:8px;position:relative}
+  .sum-ava{width:28px;height:28px;border-radius:50%;object-fit:cover;background:#fff;padding:2px}
+  .sum-head b{display:block;font-size:13.5px;font-weight:800;line-height:1.15}
+  .sum-head small{font-size:10px;opacity:.82;margin-top:1px}
+  .sum-main{display:flex;align-items:center;justify-content:space-between;margin:8px 0 7px;position:relative}
+  .sum-proj{font-size:19px;font-weight:900;letter-spacing:.5px}
+  .sum-stat{font-size:11px;font-weight:800;background:rgba(255,255,255,.22);border-radius:20px;padding:3px 10px}
+  .sum-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;position:relative}
+  .sum-grid4 .cell{background:rgba(255,255,255,.14);border-radius:10px;padding:6px 3px;text-align:center}
+  .sum-grid4 .cell b{display:block;font-size:15px;font-weight:900;color:#fff}
+  .sum-grid4 .cell span{font-size:9.5px;opacity:.78}
+  .sum-streak{background:rgba(255,255,255,.1);border-radius:10px;padding:7px 10px;margin-top:8px;position:relative}
+  .sum-streak .srow{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;font-weight:800;color:#fff}
+  .sum-streak .track{height:5px;background:rgba(255,255,255,.2);border-radius:4px;margin:5px 0 0;overflow:hidden}
   .sum-streak .track i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#FFD37A,#FF9F5A)}
-  .sum-streak .ssub{font-size:10px;font-weight:600;opacity:.8;justify-content:center}
+  .sum-streak .ssub{font-size:10px;font-weight:600;opacity:.85}
   /* 月度总结独立白卡（保持清爽可读） */
   .mcard{background:var(--card2);border:1px solid var(--ok);border-radius:12px;padding:12px 14px;margin-top:8px;font-size:13.5px}
   .mcard .m-title{font-size:14px;font-weight:800;margin-bottom:6px;color:var(--acc2)}
@@ -958,12 +957,11 @@ async function calcBadgeStats(){
   }
   return { streak, total: dates.size, unlock };
 }
-/* B模板打卡成功卡片 */
+/* B模板打卡成功卡片（紧凑版） */
 function buildCheckinCard(o){
   const now=new Date();
-  const wd=["周日","周一","周二","周三","周四","周五","周六"][now.getDay()];
   const hh=String(now.getHours()).padStart(2,"0"), mi=String(now.getMinutes()).padStart(2,"0");
-  const dateStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} · ${wd} ${hh}:${mi}`;
+  const dateStr=`${now.getMonth()+1}月${now.getDate()}日 ${hh}:${mi}`;
   const v1 = o.min ? o.min+" 分钟" : (o.extra||"—");
   const l1 = o.min ? "时长" : (o.extra ? "项目" : "—");
   const next = nextBadge(o.streak, o.total);
@@ -973,9 +971,8 @@ function buildCheckinCard(o){
     const gap = next.d - cur;
     const pct = Math.min(100, Math.round(cur/next.d*100));
     sk = `<div class="sum-streak">
-      <div class="srow"><span>${next.isTotal?"累计进度":"连续打卡进度"}</span><b>${cur} / ${next.d} 天</b></div>
+      <div class="srow"><span>${next.isTotal?"累计进度":"连续打卡"} ${cur}/${next.d}天</span><span class="ssub">${gap>0?`再练 ${gap} 天解锁「${next.name}」`:"下一枚徽章即将解锁！"}</span></div>
       <div class="track"><i style="width:${pct}%"></i></div>
-      <div class="srow ssub">${gap>0?`再练 ${gap} 天，解锁「${next.name}」`:"下一枚徽章即将解锁！"}</div>
     </div>`;
   }
   return `<div class="sum-card">
@@ -985,9 +982,8 @@ function buildCheckinCard(o){
     </div>
     <div class="sum-main">
       <div class="sum-proj">${esc(o.proj||"")}</div>
-      <span class="sum-stat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="vertical-align:-1px;margin-right:3px"><path d="M4 12.5l5 5L20 6.5"/></svg>完成</span>
+      <span class="sum-stat"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="vertical-align:-1px;margin-right:3px"><path d="M4 12.5l5 5L20 6.5"/></svg>完成</span>
     </div>
-    <div class="sum-quote">${esc(o.praise||"")}</div>
     <div class="sum-grid4">
       <div class="cell"><b>${esc(v1)}</b><span>${l1}</span></div>
       <div class="cell"><b>${o.streak}</b><span>连续天数</span></div>
@@ -1604,6 +1600,7 @@ function startCheckin(pid){
             ]);
             const streak = await calcStreak(this.project.id);
             const total = await calcTotal(this.project.id);
+            addMsg(praise, "ai");
             addCard(buildCheckinCard({kind:"锻炼", proj:this.data.type, extra:this.data.type, streak, total, praise}));
             saveChat("assistant", "CARD|锻炼|"+this.data.type+"|—|"+streak+"|"+total+"|"+praise);
             convState=null;
